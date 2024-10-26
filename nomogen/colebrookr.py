@@ -100,7 +100,11 @@ block_params0 = {
     'transform_ini': False,
     'isopleth_values': [[(left_axis['u_min'] + left_axis['u_max']) / 2, \
                          'x', \
-                         (right_axis['u_min'] + right_axis['u_max']) / 2]]
+                         (right_axis['u_min'] + right_axis['u_max']) / 2]],
+
+    # log alignment errors
+    # If this is missing or False then alignment error logs are disabled
+    'LogAlignment': False,
 }
 
 main_params = {

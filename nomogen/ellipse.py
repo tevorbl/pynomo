@@ -128,7 +128,11 @@ block_params0 = {
 
     # this isopleth connects both semi axes = 0.5
     # ie a circle of diameter 1, circumference pi
-    'isopleth_values': [[0.5, 'x', 0.5]]
+    'isopleth_values': [[0.5, 'x', 0.5]],
+
+    # log alignment errors
+    # If this is missing or False then alignment error logs are disabled
+    'LogAlignment': False,
 }
 
 # the nomogram parameters

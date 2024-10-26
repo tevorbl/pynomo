@@ -118,7 +118,6 @@ left_axis = {
     'scale_type': 'linear smart',
     'tick_levels': 3,
     'tick_text_levels': 2,
-    'tick_side' : 'left',
 }
 
 right_axis = {
@@ -128,7 +127,6 @@ right_axis = {
     'scale_type': 'linear smart',
     'tick_levels': 3,
     'tick_text_levels': 2,
-    'tick_side' : 'left',
 }
 
 middle_axis = {
@@ -138,7 +136,6 @@ middle_axis = {
     'scale_type': 'log smart',
     'tick_levels': 6,
     'tick_text_levels': 5,
-    'tick_side' : 'right',
 }
 
 block_params0 = {
@@ -149,7 +146,11 @@ block_params0 = {
     'transform_ini': False,
     'isopleth_values': [[(left_axis['u_min'] + left_axis['u_max']) / 2, \
                          'x', \
-                         (right_axis['u_min'] + right_axis['u_max']) / 2]]
+                         (right_axis['u_min'] + right_axis['u_max']) / 2]],
+
+    # log alignment errors
+    # If this is missing or False then alignment error logs are disabled
+    'LogAlignment': True,
 }
 
 main_params = {
@@ -159,7 +160,7 @@ main_params = {
     'title_x': 9.0,
     'title_y': 3.0,
     'title_box_width': 8.0,
-    'title_str': r'$\Large Z = {p \over {\rho R T}}$',
+    'title_str': r'$Z = {p \over {\rho R T}}$',
     'extra_texts': [
         {'x': 6,
          'y': 4,

@@ -52,7 +52,7 @@ G is  gradient %
 def EE(S,G):
 
     # S is km/hr, need m/s
-    S *= 10.0 / 36.0
+    S *= 1000.0 / 3600.0
     t1 = 1.94 * S**0.43
     t2 = 0.24*S**4
     t3 = 0.34*S*G*(1-1.05**(1-1.11**(G+32)))
@@ -61,8 +61,11 @@ def EE(S,G):
 
 
 # range for speed km/hr
-Smin = 0.1 * 36 / 10        # 0.1 m/s -> km/hr
-Smax = 3 * 36 / 10          # 3 m/s -> km/hr
+# note that Smin = 0 is invalid in the function EE
+# nomogen evaluates derivatives by calculating
+# the function marginally beyond the Smin..Smax range
+Smin = 0.1 * 3600 / 1000      # m/s -> km/hr
+Smax = 3 * 3600 / 1000          # m/s -> km/hr
 
 # range for slope
 Gmax = +25
@@ -79,7 +82,7 @@ EEmax = EE(Smax, Gmax)
 # a higher value may be necessary if the scales are very non-linear
 # a lower value is faster, makes a smoother curve,
 #     but could be less accurate
-NN = 15
+NN = 16
 
 
 
@@ -93,11 +96,11 @@ left_axis = {
     'tag': 'left',            # link to alternative scale
     'u_min': Smin,
     'u_max': Smax,
-    'title': r'walking speed',
+    'title': 'walking speed',
     'extra_titles':[
         {'dx':-2.5,
          'dy':-0.0,
-         'text':r'$\small km \thinspace hr^{-1}$',
+         'text':r'$km \thinspace hr^{-1}$',
          'width':5,
          }],
     'scale_type': 'linear smart',
@@ -109,7 +112,7 @@ left_axis = {
 right_axis = {
     'u_min': Gmin,
     'u_max': Gmax,
-    'title': r'gradient \%',
+    'title': 'gradient %',
     'title_x_shift': 0.6,
     'scale_type': 'linear smart',
     'tick_levels': 5,
@@ -121,7 +124,7 @@ middle_axis = {
     'tag': 'middle',            # link to alternative scale
     'u_min': EEmin,
     'u_max': EEmax,
-    'title': r'$\small Wkg^{-1}$',
+    'title': r'$W kg^{-1}$',
     'title_draw_center': True,
     'title_distance_center': -1.5,
     'extra_titles':[
@@ -144,7 +147,11 @@ block_params0 = {
 
     # the isopleth connects the mid values of the outer axes
     # edit this for different values
-    'isopleth_values': [[7, 'x', 0]]
+    'isopleth_values': [[(Smin+Smax)/2, 'x', 0]],
+
+    # log alignment errors
+    # If this is missing or False then alignment error logs are disabled
+    'LogAlignment': True,
 }
 
 
@@ -160,7 +167,7 @@ left_axis_mph = {
     'extra_titles':[
         {'dx':-0.1,
          'dy':0.0,
-         'text':r'$\small mph$',
+         'text':r'$mph$',
          }],
     'align_func': lambda m: m*km_per_mile,
     'scale_type': 'linear smart',
@@ -192,7 +199,7 @@ middle_axis_cal = {
     'tag': 'middle',
     'u_min': middle_axis['u_min'] / watts_per_calph,
     'u_max': middle_axis['u_max'] / watts_per_calph,
-    'title':r'$\small kcal/hr ({}kg/{}lbs)$'.format(wkg,wlbs),
+    'title':r'$kcal/hr ({}kg/{}lbs)$'.format(wkg,wlbs),
     'title_distance_center': 2.0,
     'title_draw_center': True,
     'align_func': lambda c: c*watts_per_calph,

@@ -25,11 +25,6 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
-# TODO:
-# add error report
-# investigate crooked tic marks at end of scales
-# investigate infinite derivative problem
-
 
 import sys
 import datetime
@@ -38,7 +33,9 @@ import math
 import numpy as np
 
 import scipy
-from scipy import interpolate
+#from scipy import interpolate
+import scipy.interpolate
+
 
 import functools
 
@@ -57,7 +54,6 @@ itNr = 0
 eAcc = eDeru = eDerv = eShape = 0
 old_cost = cost = 0
 
-
 class Nomogen:
     """
     class Nomogen - numerically determine a nomogram from an equation
@@ -73,10 +69,17 @@ class Nomogen:
                         'muShape' :
                         set to non-zero so the ends of the outer axes
                         are not fixed to the corners of the unit square
+
+                        'LogAlignment':
+                        if set True write a file containing alignment error
+                        measurements.
+
+                        'footer_string':
+                        text to appear at the foot of the nomogram.
+                        Default text appears if the is missing.
     """
 
     def __init__( self, func, main_params ):
-
 
         #########################################
         # first have a look at the inputs
@@ -95,7 +98,7 @@ class Nomogen:
             print( '''
             WARNING: parameter 'pdegree' has been renamed 'npoints' to more accurately describe its use.
             Please update your code.
-            ''')
+            ''' )
         else:
             pstr = 'npoints'
             if 'npoints' in main_params:
@@ -105,7 +108,7 @@ class Nomogen:
                 NN = 9
 
         if not isinstance(NN, int):
-            print( "\n'{}' parameter must be an integer, found {} - ".format(pstr, type(NN)), end = ' ' )
+            print( "\nparameter '{}' must be an integer, found {} - ".format(pstr, type(NN)), end=' ' )
             NN = 9
         else:
             if NN < 3:
@@ -134,10 +137,12 @@ class Nomogen:
         umin_user = params_u['u_min']
         umax_user = params_u['u_max']
         if umax_user < umin_user:
-            sys.exit("error: umax ({}) is less than umin ({})".format(umax_user, umin_user))
+            sys.exit("error in {} scale: umax ({}) is less than umin ({})"
+                     .format(params_u['title'], umax_user, umin_user))
         if 'scale_type' in params_u and 'log' in params_u['scale_type']:
             if umin_user <= 0:
-                sys.exit("error: cannot have umin ({}) <= 0 for log scale".format(umin_user))
+                sys.exit("error in {} scale: cannot have umin ({}) <= 0 for log scale".
+                         format(params_u['title'], umin_user))
             u_user = math.exp
             u_plot = math.log
         else:
@@ -147,10 +152,12 @@ class Nomogen:
         vmin_user = params_v['u_min']
         vmax_user = params_v['u_max']
         if vmax_user < vmin_user:
-            sys.exit("error: vmax ({}) is less than vmin ({})".format(vmax_user, vmin_user))
+            sys.exit("error in {} scale: vmax ({}) is less than vmin ({})".
+                     format(params_v['title'], vmax_user, vmin_user))
         if 'scale_type' in params_v and 'log' in params_v['scale_type']:
             if vmin_user <= 0:
-                sys.exit("error: cannot have vmin ({}) <= 0 for log scale".format(vmin_user))
+                sys.exit("error in {} scale: cannot have vmin ({}) <= 0 for log scale".
+                         format(params_v['title'], vmin_user))
             v_user = math.exp
             v_plot = math.log
         else:
@@ -167,7 +174,8 @@ class Nomogen:
         #print( 'wmin_user is', wmin_user, ', wmax_user is ', wmax_user )
         if 'scale_type' in params_w and 'log' in params_w['scale_type']:
             if wmin_user <= 0:
-                sys.exit("error: cannot have wmin ({}) <= 0 for log scale".format(wmin_user))
+                sys.exit("error in {} scale: cannot have wmin ({}) <= 0 for log scale".
+                         format(params_w['title'], wmin_user))
             w_user = math.exp
             w_plot = math.log
         else:
@@ -196,7 +204,6 @@ class Nomogen:
         # allow nomogram tolerance == +/- 0.1 mm
         # this is how many dots 0.1mm square fit into the nomogram area
         resolution = 10 * 10 * width * height
-
 
 
         ######################################################
@@ -281,21 +288,9 @@ class Nomogen:
 
             # yw(w) goes thru (wB,0), (wG,0.5) & (wE,1)
             # Note: the wX might not be in increasing order (ie wB might be wmax)
-            yw = np.array( [scipy.interpolate.interp1d( [wB, wG, wE], [0, 0.5, 1] )(w) \
-                            for w in wnodes] )
-
-            # check the calcs ...
-            ywB, ywG, ywE = scipy.interpolate.barycentric_interpolate(wnodes, yw, [wB, wG, wE])
+            yw = scipy.interpolate.interp1d( [wB, wG, wE], [0, 0.5, 1] )( wnodes )
             if "trace_init" in log:
                 print("yw is ", yw)
-                print( 'evaluated wB, wG, wE are ', ywB, ywG, ywE )
-
-            if not math.isclose( ywB, 0.0, abs_tol= 10*sys.float_info.epsilon ):
-                sys.exit( "initial w scale failed for ywB test ({}, expected 0) - quitting".format(ywB) )
-            #if not math.isclose(ywG, 0.5):
-            #    sys.exit("initial y scale failed for ywG test - quitting")
-            if not math.isclose(ywE, 1.0):
-                sys.exit( "initial w scale failed for ywE test ({}, expected 1) - quitting".format(ywB) )
         else:
             # we can use a linear estimate
             alphaxw = (wE - wG - wH + wB) / (wE - wB) / (wG - wH)
@@ -315,7 +310,7 @@ class Nomogen:
             elif xwB < 0:
                 xwB = 0
 
-            xw =  xwB + chebyGrid * (xwE - xwB)
+            xw = xwB + chebyGrid * (xwE - xwB)
             yw = yw0 + (yw2-yw0)*chebyGrid
 
 
@@ -389,31 +384,48 @@ class Nomogen:
 
         #############################################################
         #
-        # find the derivative of function f at position x
-        # detect range and value errors
-        # x1 & x0 are max * min values of x, used to calculate step size
-        #
-        # formulas taken from Fornberg:
-        # "Generation of Finite Difference Formulas on Arbitrarily Spaced Grids",
-        # Mathematics of Computation, Vol 51, nr 184, Oct 1988, pp 699-706
-
+        # scale by 32 for O(h^2), by 1024 for O(h^4)
+        # higher order means larger step size is OK, leaving more bits for accuracy
+        sqrt_eps = math.sqrt( sys.float_info.epsilon )
+        step_size = sqrt_eps  * 1024
         def derivative(f, x, x1, x0):
+            '''
+            find the derivative of function f at position x
+            detect range and value errors
+            x1 & x0 are max & min values of x, used to calculate step size
+
+            formulas taken from Fornberg:
+            "Generation of Finite Difference Formulas on Arbitrarily Spaced Grids",
+            Mathematics of Computation, Vol 51, nr 184, Oct 1988, pp 699-706
+            '''
+
+            h = (x1-x0)*step_size   # step size
+            #h^2 is machine precision, so use O(h^2) methods
+            # seems to give 7 or 8 digits of accuracy in practice
+
             try:
-                h = 1.0e-4*(x1-x0)
-                r = (f(x-2*h) - 8*f(x-h) + 8*f(x+h) - f(x+2*h))/(12*h)
+                #r = (f(x+h) - f(x-h))/(2*h)
+                r = (f(x-2*h) - 8*f(x-h) + 8*f(x+h) - f(x+2*h))/(12*h)  # O(h^4)
                 if math.isnan(r):
                     # try a one sided derivative (does not work well, commented out)
                     # assume error is caused by exceding valid domain of f
-                    # magically gives h the correct sign, assuming x is one of {x0, x1}
-                    #h = ((x1+x0) - 2*x)*1e-4
+                    # if x is x1, then take derivative over the region to the left of x1
+                    h = (x1-x0)*1e-5
+                    if x == x1: h = -h
+                    r = (f(x+h) - f(x))/h
                     #r = (-25*f(x) + 48*f(x+h) - 36*f(x+2*h) + 16*f(x+3*h) - 3*f(x+4*h))/(12*h)
-                    print( 'derivative nan at x={}, max={}, min={}, result={}'.format(x, x1,x0, r) )
+                    print( 'derivative nan at x={}, max={}, min={}, result={}'.format(x, x1, x0, r) )
             except ValueError:
-                # magically gives h the correct sign, assuming x is one of {x0, x1}
-                #h = ((x1+x0) - 2*x)*1e-4
-                #r = (-25*f(x) + 48*f(x+h) - 36*f(x+2*h) + 16*f(x+3*h) - 3*f(x+4*h))/(12*h)
-                r = math.nan
-                print( 'derivative exception at x={}, max={}, min={}, result={}'.format(x, x1,x0, r) )
+                # if x is xmin (or xmax) then f(x-h) (or f(x+h))
+                # is evaluating f outside the valid range of x
+                # => take a one sided derivative where x is inside range [x0..x1]
+                # if x is x1, then take derivative over the region to the left of x1
+                h = (x1-x0)*1e-5
+                if x == x1: h = -h
+                r = (f(x+h) - f(x))/h
+                print( '-----------------------------------' )
+                print( 'derivative exception at x={}, max={}, min={}, result={}'.format(x, x1, x0, r) )
+                print( 'recovery attempted, result may be inaccurate' )
             return r
 
 
@@ -427,11 +439,11 @@ class Nomogen:
 
         w_values = np.array([[w(u, v) for v in vnodes] for u in unodes])  # L141
 
-        dwdu_values = np.array( [[ derivative(lambda uu: w(uu, v), u, umax, umin ) \
+        dwdu_values = np.array( [[ derivative(lambda uu: w(uu, v), u, umax, umin )
                                    for v in vnodes] for u in unodes])
 
-        dwdv_values = np.array( [[derivative(lambda vv: w(u, vv), v, vmax, vmin ) \
-                                  for v in vnodes] for u in unodes])
+        dwdv_values = np.array( [[derivative(lambda vv: w(u, vv), v, vmax, vmin )
+                                   for v in vnodes] for u in unodes])
 
         diffmatu = diffmat( unodes )
         diffmatv = diffmat( vnodes )
@@ -445,11 +457,10 @@ class Nomogen:
         def calc_cost(dummy):
 
             """
-            find cost of candidate nomogram
-            cost has components, alignment accuracy, slope accuracy and area optimisation
-            - max error in accuracy is < 0.1 mm
-            - must fill size (height x width) as much as possible,
-              so too small or too big are errors
+            find the cost of the candidate nomogram
+            ax is a 1D array of the Chebyshev nodes of the axes
+
+            cost is comprised of alignment accuracy, slope accuracy and area optimisation
 
             the accuracy component is comprised of
             - position error
@@ -457,10 +468,9 @@ class Nomogen:
 
             the size component is optional
             - depends on muShape being non-zero
-            It calculates a measurability score: a combination of
             - the scale of the axes
             - the angle of the index lines
-            There is a cost of exceeding the nomogram boundary
+            - there is a cost of exceeding the nomogram boundary
 
             normalise each error
             - per point pair, and
@@ -468,7 +478,7 @@ class Nomogen:
             """
 
             if muShape != 0:
-                lxu, lyu, lxv, lyv, lxw, lyw =  np.array_split(dummy, 6)  # qqq
+                lxu, lyu, lxv, lyv, lxw, lyw = np.array_split(dummy, 6)  # L657
 
                 # the cost of straying outside the unit square:
                 # the exp function gets big quickly as the points approach
@@ -481,10 +491,10 @@ class Nomogen:
                     np.exp(aa*(-0.3-lyv)) + np.exp(aa*(lyv-1.3)) + 1
 
             else:
-                # the corner coordinates are fixed, so don't use them
+                # the corner coordinates are fixed, so are not part of the optimisation
                 lxu, lyu, lxv, lyv, lyw = xu, yu, xv, yv, yw
                 lxu[1:-1], lyu[1:-1], lxv[1:-1], lyv[1:-1], lxw, lyw[1:-1] = \
-                np.array_split( dummy, [NN-2, 2*NN-4, 3*NN-6, 4*NN-8, 5*NN-8]) #qqq
+                    np.array_split( dummy, [NN-2, 2*NN-4, 3*NN-6, 4*NN-8, 5*NN-8] )  #L657
 
             if "trace_cost" in log:
                 print("\ntry")
@@ -522,15 +532,13 @@ class Nomogen:
             dydwa = baryw(w_values)
 
 
-            for iu in range(len(unodes)):
+            for iu, u in enumerate(unodes):
                 txu = lxu[iu]
                 tyu = lyu[iu]
                 dxdu = fdxdu[iu]
                 dydu = fdydu[iu]
 
-                u = unodes[iu]
-
-                for iv in range(len(vnodes)):
+                for iv, v in enumerate(vnodes):
                     txv = lxv[iv]
                     tyv = lyv[iv]
                     dxdv = fdxdv[iv]
@@ -541,41 +549,40 @@ class Nomogen:
                     dxdw = dxdwa[iu][iv]
                     dydw = dydwa[iu][iv]
 
-                    v = vnodes[iv]
                     tx = txu - txv
                     ty = tyu - tyv
                     td2 = tx * tx + ty * ty
                     td = math.sqrt(td2)
-                    e0 = (tx * (tyu - tyw) - (txu - txw) * ty) / td #[d]
+                    e0 = (tx * (tyu - tyw) - (txu - txw) * ty) / td  # [d]
                     if td2 * resolution > 1:
-                        eAcc += e0*e0                               #[d^2]
+                        eAcc += e0*e0                                # [d^2]
 
-                    tmp = ty * dxdw - tx * dydw                     #[xy]/[w]
-                    tuc = e0 * (tx * dxdu + ty * dydu) / td2        # [d]/[u]
-                    tvc = e0 * (tx * dxdv + ty * dydv) / td2        # [d]/[v]
+                    tmp = ty * dxdw - tx * dydw                      # [xy]/[w]
+                    tuc = e0 * (tx * dxdu + ty * dydu) / td2         # [d]/[u]
+                    tvc = e0 * (tx * dxdv + ty * dydv) / td2         # [d]/[v]
 
 
                     ### these values are predefined for speedup L141
                     dwdu = dwdu_values[iu][iv]
                     quitOnNan = True               # bravely carrying on doesn't work well
                     if not math.isnan(dwdu):
-                        dedu = ((dwdu * tmp + (tyv - tyw) * dxdu - (txv - txw) * dydu)) / td - tuc #[d]/[u] - [d]/[u]
-                        eDeru += dedu ** 2         #[d^2]/[u^2]
+                        dedu = ((dwdu * tmp + (tyv - tyw) * dxdu - (txv - txw) * dydu)) / td - tuc  # [d]/[u] - [d]/[u]
+                        eDeru += dedu ** 2         # [d^2]/[u^2]
                     elif quitOnNan:
                         sys.exit( """
-error: the u scale line around the region u = {} cannot be represented by a finite polynomial!
+error: the {} scale line around the region u = {} cannot be represented by a finite polynomial!
        please reduce limits on this scale and try again
-                                 """.format(u_user(u)) )
+                                 """.format(params_u['title'], u_user(u)) )
 
                     dwdv = dwdv_values[iu][iv]
                     if not math.isnan(dwdv):
-                        dedv = ((dwdv * tmp + (tyw - tyu) * dxdv - (txw - txu) * dydv)) / td + tvc  #[d]/[v] + [d]/[v]
+                        dedv = ((dwdv * tmp + (tyw - tyu) * dxdv - (txw - txu) * dydv)) / td + tvc  # [d]/[v] + [d]/[v]
                         eDerv += dedv ** 2
                     elif quitOnNan:
                         sys.exit( """
-error: the v scale line around the region v = {} cannot be represented by a finite polynomial!
+error: the {} scale line around the region v = {} cannot be represented by a finite polynomial!
        try again with reduced limits on this scale
-                                 """.format(v_user(v)) )
+                                 """.format(params_v['title'], v_user(v)) )
 
                     check = True  # checks are slow
                     check = False
@@ -602,7 +609,7 @@ error: the v scale line around the region v = {} cannot be represented by a fini
                             sys.exit("dedu error")
 
                         aa = u
-                        tv = derivative( lambda vv: gete0(aa, vv), v, vmax , vmin )
+                        tv = derivative( lambda vv: gete0(aa, vv), v, vmax, vmin )
                         if not math.isclose(tv, dedv, rel_tol=1e-05, abs_tol=1e-7):
                             print("(u,v) is (", u, ",", v, "), dedv is ", dedv, ", tv is ", tv)
                             sys.exit("dedv error")
@@ -614,7 +621,7 @@ error: the v scale line around the region v = {} cannot be represented by a fini
                     # divide by range of u to make eShape independent of u units, etc
                     if muShape != 0:
                         t = 0.01*(umax-umin)*(umax-umin) + u*u
-                        uShape = ((dxdu*ty - dydu*tx))**2 * t   #[x^2 y^2 / u^2] * [u^2]
+                        uShape = ((dxdu*ty - dydu*tx))**2 * t   # [x^2 y^2 / u^2] * [u^2]
                         t = 0.01*(vmax-vmin)*(vmax-vmin) + v*v
                         vShape = ((dxdv*ty - dydv*tx))**2 * t
                         tShape = td2 * ( 1/uShape + 1/vShape)         # 1/[d^2]
@@ -636,13 +643,403 @@ error: the v scale line around the region v = {} cannot be represented by a fini
             #
             # there is one error term for each pair of points
             # so normalise to average error per point pair.
-            mu = 1
+            mu = 1 #XXX
             global cost
-            cost = (eAcc + \
-                    mu * (eDeru + eDerv) + \
-                    eShape) / \
-                    (len(unodes) * len(vnodes))
+            cost = (eAcc + mu * (eDeru + eDerv) + eShape) / (len(unodes) * len(vnodes))
             return cost
+
+
+
+
+
+        #################################################
+
+
+        def calc_jac( dummy ):
+            '''
+            calculate the jacobian of calc_cost() above
+
+            '''
+
+            if muShape != 0:
+                lxu, lyu, lxv, lyv, lxw, lyw = np.array_split(dummy, 6)  # L657
+                jxu0, jyu0, jxv0, jyv0, jxw0, jyw0 = range(0, 6*NN-1, NN)
+                #print( jxu0, jyu0, jxv0, jyv0, jxw0, jyw0 )
+
+            else:
+                lxu, lyu, lxv, lyv, lyw = xu, yu, xv, yv, yw
+                jxu0, jyu0, jxv0, jyv0, jxw0 = range(0, 4*NN-7, NN-2)
+                jyw0 = jxw0+NN
+                lxu[1:-1], lyu[1:-1], lxv[1:-1], lyv[1:-1], lxw, lyw[1:-1] = \
+                    np.array_split( dummy, [jyu0, jxv0, jyv0, jxw0, jyw0] )  #L657
+
+            # share these with calc_cost()
+
+            # precaclulate derivative functions
+            fdxdu = diffmatu @ lxu
+            fdydu = diffmatu @ lyu
+            fdxdv = diffmatv @ lxv
+            fdydv = diffmatv @ lyv
+            fdxdw = diffmatw @ lxw
+            fdydw = diffmatw @ lyw
+
+
+            # precalculate coordinates and derivatives for w outside loop for speedup
+            baryw.set_yi(lxw)
+            txwa = baryw(w_values)
+            baryw.set_yi(lyw)
+            tywa = baryw(w_values)
+            baryw.set_yi(fdxdw)
+            dxdwa = baryw(w_values)
+            baryw.set_yi(fdydw)
+            dydwa = baryw(w_values)
+
+
+            h = sqrt_eps                   # is this used?
+            jac = np.zeros( len(dummy) )
+
+            teDeru = teDerv = 0
+
+            # accuracy error for the u scale
+            jacxui = jxu0; jacyui = jyu0
+            for iu in range(len(lxu)) if muShape!=0 else range(1, len(lxu)-1):
+                txu = lxu[iu]
+                tyu = lyu[iu]
+                dxdu = fdxdu[iu]
+                dydu = fdydu[iu]
+
+                u = unodes[iu]
+
+                derrxui = derryui = 0   # derivative of error for xu[i]
+
+
+                for iv, v in enumerate(vnodes):
+                    txv = lxv[iv]
+                    tyv = lyv[iv]
+                    dxdv = fdxdv[iv]
+                    dydv = fdydv[iv]
+
+                    txw = txwa[iu][iv]
+                    tyw = tywa[iu][iv]
+                    dxdw = dxdwa[iu][iv]
+                    dydw = dydwa[iu][iv]
+
+                    tx = txu - txv
+                    ty = tyu - tyv
+                    td2 = tx*tx + ty*ty
+                    td = math.sqrt(td2)
+
+                    tA = (txu*(tyv-tyw) + txv*(tyw-tyu) + txw*(tyu-tyv))
+                    tderr = 2*tA*( (tyv - tyw)*td2 -  tA*tx) / (td2*td2)
+                    derrxui += tderr
+
+                    tderr = 2*tA*( (txw - txv)*td2 -  tA*ty) / (td2*td2)
+                    derryui += tderr
+
+
+
+                    e0 = (tx * (tyu - tyw) - (txu - txw) * ty) / td  # [d]
+
+
+                    tmp = ty * dxdw - tx * dydw                      # [xy]/[w]
+                    tuc = e0 * (tx * dxdu + ty * dydu) / td2         # [d]/[u]
+                    tvc = e0 * (tx * dxdv + ty * dydv) / td2         # [d]/[v]
+
+
+                    ### these values are predefined for speedup L141
+                    dwdu = dwdu_values[iu][iv]
+                    quitOnNan = True               # bravely carrying on doesn't work well
+                    if not math.isnan(dwdu):
+                        dedu = ((dwdu * tmp + (tyv - tyw) * dxdu - (txv - txw) * dydu)) / td - tuc  # [d]/[u] - [d]/[u]
+                        teDeru += dedu ** 2         # [d^2]/[u^2]
+                    elif quitOnNan:
+                        sys.exit( """
+error: the {} scale line around the region u = {} cannot be represented by a finite polynomial!
+       please reduce limits on this scale and try again
+                                 """.format(params_u['title'], u_user(u)) )
+
+                    dwdv = dwdv_values[iu][iv]
+                    if not math.isnan(dwdv):
+                        dedv = ((dwdv * tmp + (tyw - tyu) * dxdv - (txw - txu) * dydv)) / td + tvc  # [d]/[v] + [d]/[v]
+                        teDerv += dedv ** 2
+                    elif quitOnNan:
+                        sys.exit( """
+error: the {} scale line around the region v = {} cannot be represented by a finite polynomial!
+       try again with reduced limits on this scale
+                                 """.format(params_v['title'], v_user(v)) )
+
+
+                    # calculate cost of shape
+                    # include cost of position
+                    # u & v axes
+                    # divide by range of u to make eShape independent of u units, etc
+                    if muShape != 0:
+                        t = 0.01*(umax-umin)*(umax-umin) + u*u
+                        uShape = ((dxdu*ty - dydu*tx))**2 * t   # [x^2 y^2 / u^2] * [u^2]
+                        t = 0.01*(vmax-vmin)*(vmax-vmin) + v*v
+                        vShape = ((dxdv*ty - dydv*tx))**2 * t
+                        tShape = td2 * ( 1/uShape + 1/vShape)         # 1/[d^2]
+
+                        #tShape *= cost_pos_u[iu] + cost_pos_v[iv]
+                        #eShape += tShape
+
+                jac[jacxui] = derrxui; jacxui += 1
+                jac[jacyui] = derryui; jacyui += 1
+
+
+
+            # accuracy error for the v scale
+            jacxvi = jxv0; jacyvi = jyv0
+            for iv in range(len(lxv)) if muShape!=0 else range(1, len(lxv)-1):
+                txv = lxv[iv]
+                tyv = lyv[iv]
+                dxdv = fdxdv[iv]
+                dydv = fdydv[iv]
+
+                v = vnodes[iv]
+
+                derrxvi = derryvi = 0   # derivative of error for xv[i]
+
+
+                for iu, u in enumerate(unodes):
+                    txu = lxu[iu]
+                    tyu = lyu[iu]
+                    dxdu = fdxdu[iu]
+                    dydu = fdydu[iu]
+
+                    txw = txwa[iu][iv]
+                    tyw = tywa[iu][iv]
+                    dxdw = dxdwa[iu][iv]
+                    dydw = dydwa[iu][iv]
+
+                    tx = txu - txv
+                    ty = tyu - tyv
+                    td2 = tx*tx + ty*ty
+                    td = math.sqrt(td2)
+
+                    tA = (txu*(tyv-tyw) + txv*(tyw-tyu) + txw*(tyu-tyv))
+                    tderr = 2*tA*( (tyw - tyu)*td2 +  tA*tx) / (td2*td2)
+                    derrxvi += tderr
+
+                    tderr = 2*tA*( (txu - txw)*td2 +  tA*ty) / (td2*td2)
+                    derryvi += tderr
+
+
+
+                    e0 = (tx * (tyu - tyw) - (txu - txw) * ty) / td  # [d]
+
+
+                    tmp = ty * dxdw - tx * dydw                      # [xy]/[w]
+                    tuc = e0 * (tx * dxdu + ty * dydu) / td2         # [d]/[u]
+                    tvc = e0 * (tx * dxdv + ty * dydv) / td2         # [d]/[v]
+
+
+                    ### these values are predefined for speedup L141
+                    dwdu = dwdu_values[iu][iv]
+                    quitOnNan = True               # bravely carrying on doesn't work well
+                    if not math.isnan(dwdu):
+                        dedu = ((dwdu * tmp + (tyv - tyw) * dxdu - (txv - txw) * dydu)) / td - tuc  # [d]/[u] - [d]/[u]
+                        teDeru += dedu ** 2         # [d^2]/[u^2]
+                    elif quitOnNan:
+                        sys.exit( """
+error: the {} scale line around the region u = {} cannot be represented by a finite polynomial!
+       please reduce limits on this scale and try again
+                                 """.format(params_u['title'], u_user(u)) )
+
+                    dwdv = dwdv_values[iu][iv]
+                    if not math.isnan(dwdv):
+                        dedv = ((dwdv * tmp + (tyw - tyu) * dxdv - (txw - txu) * dydv)) / td + tvc  # [d]/[v] + [d]/[v]
+                        teDerv += dedv ** 2
+                    elif quitOnNan:
+                        sys.exit( """
+error: the {} scale line around the region v = {} cannot be represented by a finite polynomial!
+       try again with reduced limits on this scale
+                                 """.format(params_v['title'], v_user(v)) )
+
+
+                    # calculate cost of shape
+                    # include cost of position
+                    # u & v axes
+                    # divide by range of u to make eShape independent of u units, etc
+                    if muShape != 0:
+                        t = 0.01*(umax-umin)*(umax-umin) + u*u
+                        uShape = ((dxdu*ty - dydu*tx))**2 * t   # [x^2 y^2 / u^2] * [u^2]
+                        t = 0.01*(vmax-vmin)*(vmax-vmin) + v*v
+                        vShape = ((dxdv*ty - dydv*tx))**2 * t
+                        tShape = td2 * ( 1/uShape + 1/vShape)         # 1/[d^2]
+
+                        #tShape *= cost_pos_u[iu] + cost_pos_v[iv]
+                        #eShape += tShape
+
+                jac[jacxvi] = derrxvi; jacxvi += 1
+                jac[jacyvi] = derryvi; jacyvi += 1
+
+
+            # now accuracy error for the w axis
+
+            jacxwk = jxw0; jacywk = jyw0
+            for kw in range(len(lxw)):
+                derrxwk = derrywk = 0   # jacobian of error for xw[k], yw[k]
+                twk = wnodes[kw]
+                alphak = 1
+                for kk in range(len(wnodes)):
+                    if kk != kw:
+                        alphak = alphak*(twk - wnodes[kk])
+
+
+                for iu in range(len(lxu)):
+                    txu = lxu[iu]
+                    tyu = lyu[iu]
+                    dxdu = fdxdu[iu]
+                    dydu = fdydu[iu]
+
+                    for jv in range(len(lxv)):
+
+                        txv = lxv[jv]
+                        tyv = lyv[jv]
+                        dxdv = fdxdv[jv]
+                        dydv = fdydv[jv]
+
+                        txw = txwa[iu][jv]
+                        tyw = tywa[iu][jv]
+                        dxdw = dxdwa[iu][jv]
+                        dydw = dydwa[iu][jv]
+
+                        tw = w_values[iu][jv]  # tw = w(u,v)
+
+                        dwk = 1/alphak
+                        for kk in range(len(wnodes)):
+                            if kk != kw:
+                                dwk = dwk*(tw - wnodes[kk])
+                        # dwk = d(coord at w) / d(cooord wk)
+
+                        ############## test code ###############################
+                        check = False
+                        #check = True
+                        if check:
+
+                            # deltaj[j] = (-1)**j * (0.5 if j in [0, last] else 1)
+                            deltaj = np.ones(len(wnodes))
+                            deltaj[1::2] = -1
+                            deltaj[0] = 0.5;         deltaj[-1] *= 0.5
+                            #print( 'deltaj is ', deltaj )
+                            if tw == twk:
+                                dwk1 = 1
+                            elif tw in wnodes:
+                                dwk1 = 0
+                            else:
+                                B=0
+                                for kk in range(len(wnodes)):
+                                    B = B + deltaj[kk]/(tw - wnodes[kk])
+                                dwk1 = (deltaj[kw]/(tw - twk))/B
+                            # dwk1 = d(coord at w) / d(cooord wk)
+
+
+                            A = 1
+                            tw = tw*(1+h)
+                            for kk in range(len(wnodes)):
+                                if kk != kw:
+                                    A = A*(tw - wnodes[kk])
+                            #print( 'dwk is ', dwk, 'dwk1 is ', dwk1, ', test is ', A/alphak )
+
+                            t = lxw[kw]
+                            lxw[kw] = t+h
+                            xwwt1 = evaluate(tw, wnodes, lxw)
+                            lxw[kw] = t-h
+                            xwwt0 = evaluate(tw, wnodes, lxw)
+                            lxw[kw] = t
+                            dddd = (xwwt1 - xwwt0) / (2*h)
+
+                            av = (dwk + dwk1 + dddd)/3
+                            if not math.isclose(av, dwk, rel_tol=1e-5, abs_tol= 1e-5):
+                                print( 'dwk diverges, av is ', av, 'dwk is ', dwk, ', dwk1 is ',
+                                       dwk1, ', dddd is ', dddd  )
+                            elif not math.isclose(av, dwk1, rel_tol = 1e-5, abs_tol= 1e-5):
+                                print( 'dwk1 diverges, av is ', av, 'dwk1 is ', dwk1  )
+                            elif not math.isclose(av, dddd, rel_tol = 1e-5, abs_tol= 1e-5):
+                                print( 'dddd diverges, av is ', av, 'dddd is ', dwk  )
+
+                            #print( 'dwk is ', dwk, ', dddd is ', dddd, ', average is ', (dwk + dwk1 + A/B + dddd)/4 )
+                        ################################################
+
+                        tx = txu - txv
+                        ty = tyu - tyv
+                        td2 = tx*tx + ty*ty
+
+                        tA = (txu*(tyv-tyw) + txv*(tyw-tyu) + txw*(tyu-tyv))
+                        tderr = 2*tA*dwk*(tyu - tyv) / td2
+                        derrxwk += tderr
+
+                        tderr = 2*tA*dwk*(txv - txu) / td2     # no y term for first & last node
+                        if not kw in [0, len(wnodes)-1] :
+                            derrywk += tderr
+
+
+                jac[jacxwk] = derrxwk; jacxwk += 1
+
+                # first & last y nodes are fixed at 0 & 1, so they have no jacobian term
+                if not kw in [0, len(wnodes)-1] :
+                    jac[jacywk] = derrywk; jacywk += 1
+
+
+
+            # make eDeru independent of the scale of u,
+            # so multiply by range of u to cancel units
+            # eDeru has units (xy/u)**2
+            teDeru *= (umax - umin) ** 2                      # [d^2]
+            teDerv *= (vmax - vmin) ** 2                      # [d^2]
+
+            #eShape *= muShape
+
+
+            return jac / (len(unodes) * len(vnodes))
+
+
+
+
+
+        ##########################################
+
+
+        def calc_jac00( dummy ):
+            '''
+            calculate the jacobian of calc_cost() above
+            this version is equivalent to the current standard library function
+            '''
+            h = sqrt_eps                          # step size
+            j = np.empty( len(dummy) )
+            f0 = calc_cost( dummy ) # cost        # this has already been calculated
+            for i in range( len(dummy) ):
+                t = dummy[i]
+                dummy[i] = t+h
+                j[i] = ( calc_cost(dummy)-f0 ) / h
+                dummy[i] = t
+
+            return j
+
+
+        def calc_jac0( dummy ):
+            '''
+            calculate the jacobian of calc_cost() above
+            more accurate version (O(h^2)) than calc_jac00(), but
+            more expensive, requires 2 exaluations of the cost function per loop
+            '''
+            h = sqrt_eps*4                             # step size
+            j = np.empty( len(dummy) )
+            for i in range( len(dummy) ):
+                t = dummy[i]
+                dummy[i] = t-h
+                f0 = calc_cost( dummy )
+                dummy[i] = t+h
+                j[i] = ( calc_cost(dummy)-f0 ) / (2*h)
+                dummy[i] = t
+
+            if False and itNr % 10 == 0:
+                print( '\njac0 is ', j )
+                print( 'jac00 is ', calc_jac00( dummy ) )
+                print( 'jac1 is ', calc_jac( dummy ), '\n' )
+
+            return j
 
 
         # run this function whenever the optimise function enters a
@@ -672,17 +1069,17 @@ error: the v scale line around the region v = {} cannot be represented by a fini
 
         assert len(xu) == NN
         if muShape != 0:
-            x0 = np.concatenate([xu, yu, xv, yv, xw, yw])  # qqq
+            x0 = np.concatenate([xu, yu, xv, yv, xw, yw])  # L657
         else:
-            x0 = np.concatenate([xu[1:-1], yu[1:-1], \
-                                 xv[1:-1], yv[1:-1], \
-                                 xw, yw[1:-1]])  # qqq
+            x0 = np.concatenate([xu[1:-1], yu[1:-1],
+                                 xv[1:-1], yv[1:-1],
+                                 xw, yw[1:-1]])  # L657
 
 
         # increase gtol if this terminates due to loss of precision
-        res = scipy.optimize.minimize( calc_cost, x0, callback=newStep,
-                options={'disp': False, 'gtol': 1e-4, 'maxiter': None},
-                tol=1e-4 )
+        res = scipy.optimize.minimize( calc_cost, x0, callback=newStep, jac=calc_jac0,
+                                       options={'disp': False, 'gtol': 1e-4, 'maxiter': None},
+                                       tol=1e-4 )
 
 
         ########################################
@@ -702,12 +1099,14 @@ error: the v scale line around the region v = {} cannot be represented by a fini
         if True or res.success:  # xxx lack of precision still gives a result
             if muShape != 0:
                 xu, yu, xv, yv, xw, yw = \
-                    np.array_split(res.x, 6)  # qqq
+                    np.array_split(res.x, 6)  # L657
             else:
                 xu[1:-1], yu[1:-1], xv[1:-1], yv[1:-1], xw, yw[1:-1] = \
-                    np.array_split(res.x, \
-                                   [NN - 2, 2 * NN - 4, 3 * NN - 6, \
-                                    4 * NN - 8, 5 * NN - 8])  # qqq
+                    np.array_split(res.x,
+                                   [NN - 2, 2 * NN - 4, 3 * NN - 6,
+                                    4 * NN - 8, 5 * NN - 8])  # L657
+            #print( '\njacobian is:\n', res.jac, '\n' )
+            #print( '\ncalc_jac0 is:\n', calc_jac0(res.x), '\n' )
 
             if "trace_result" in log:
                 print("solution is ...")
@@ -719,7 +1118,7 @@ error: the v scale line around the region v = {} cannot be represented by a fini
                 print("yw is ", yw)
 
 
-            # check derivatives at each node pair...
+   # check derivatives at each node pair...
             fdxdu = diffmatu @ xu
             fdydu = diffmatu @ yu
             fdxdv = diffmatv @ xv
@@ -775,17 +1174,18 @@ error: the v scale line around the region v = {} cannot be represented by a fini
                     t = abs(lhs - rhs)*(umax-umin)*(vmax-vmin)/(wmax-wmin)
                     if t > maxerr:
                         maxerr = t
-            print("max derivative errror is {:.2g}".format(maxerr))
-
+            print("max derivative error is {:.2g}".format(maxerr))
 
 
             # now iterate over the length of the u & v scales,
             # verifying the nomogram at each step
 
+            hmm = math.sqrt(height * width) # for converting distance from fractions of unit square to mm
+
             # verify alignment every d mm
-            d = 1  # choose d
+            d = 1  # choose 1mm
             print("checking solution every ", d, "mm, ")
-            ds = d / math.sqrt(height * width)  # step size as fraction of the unit square
+            ds = d / hmm  # step size as fraction of the unit square
 
             baryfdxdu = scipy.interpolate.BarycentricInterpolator(unodes, fdxdu)
             baryfdydu = scipy.interpolate.BarycentricInterpolator(unodes, fdydu)
@@ -798,7 +1198,7 @@ error: the v scale line around the region v = {} cannot be represented by a fini
                 dy = baryfdydu( u )
                 # next u:
                 dd = ds / math.hypot(dx, dy)
-                if u + dd > umax and u < umax:
+                if umax-dd < u < umax:
                     u = umax
                 else:
                     u = u+dd
@@ -815,7 +1215,7 @@ error: the v scale line around the region v = {} cannot be represented by a fini
                 dy = baryfdydv( v )
                 # next v:
                 dd = ds / math.hypot(dx, dy)
-                if v + dd > vmax and v < vmax:
+                if vmax - dd < v < vmax:
                     v = vmax
                 else:
                     v = v+dd
@@ -831,6 +1231,20 @@ error: the v scale line around the region v = {} cannot be represented by a fini
             baryv.set_yi(yv)
             yvcoorda = baryv(vpoints)
 
+            logErrors = 'LogAlignment' in main_params['block_params'][0] \
+                and main_params['block_params'][0]['LogAlignment']
+            if logErrors:
+                fn = main_params['filename']+'.error.py'
+                print( 'writing alignment errors to {}'.format(fn) )
+                logFile = open( fn, 'w')
+                logFile.write( '# nomogen alignment error key value pairs, etc.  error is in mm\n' )
+                logFile.write( '# generated by nomogen {} \n'.format( datetime.datetime.now().strftime('%a %d %b %Y %H:%M:%S'), ))
+                logFile.write( "nomo_id = {{ 'file':'{}', 'title': '{}', 'paper_height': {}, 'paper_width':{} }}\n". \
+                               format( main_params['filename'], params_w['title'],
+                                       main_params['paper_height'],
+                                       main_params['paper_width'], ) )
+                logFile.write( 'Nomo_error = [\n')
+
             maxdiff = 0
             for u, xucoord, yucoord in zip( upoints, xucoorda, yucoorda ):
                 for v, xvcoord, yvcoord in zip( vpoints, xvcoorda, yvcoorda ):
@@ -838,31 +1252,43 @@ error: the v scale line around the region v = {} cannot be represented by a fini
                         print("u is ", u_user(u), " at pos (", xucoord, ",", yucoord, ")")
                         print("v is ", v_user(v), " at pos (", xvcoord, ",", yvcoord, ")")
                         print("w is ", w_user(wvalue), " at pos (", xwcoord, ",", ywcoord, ")")
-                        print( "alignment difference is {:5.2g} about {:5.2f} mm".format(difference, difference * math.sqrt(width * height)) )
+                        print( "alignment difference is {:5.2g} about {:5.2f} mm".format(difference, difference * hmm) )
 
                     wvalue = w(u, v)
-                    xwcoord = evaluate(wvalue, wnodes, xw)
-                    ywcoord = evaluate(wvalue, wnodes, yw)
-                    difference = abs((xucoord - xvcoord) * (yucoord - ywcoord) - (xucoord - xwcoord) * (yucoord - yvcoord)) / \
-                        math.hypot(xucoord - xvcoord, xvcoord - yvcoord)
+                    if params_w['u_min'] < w_user(wvalue) < params_w['u_max']:
+                        xwcoord = evaluate(wvalue, wnodes, xw)
+                        ywcoord = evaluate(wvalue, wnodes, yw)
+                        difference = ((xucoord - xvcoord) * (yucoord - ywcoord) - (xucoord - xwcoord) * (yucoord - yvcoord)) / \
+                            math.hypot(xucoord - xvcoord, xvcoord - yvcoord)
 
-                    if wvalue < wmin and not math.isclose(wvalue, wmin, rel_tol = 0.01):
-                        report_alignment(difference, xwcoord, ywcoord)
-                        print( "scale range error, please check w scale min limits", \
-                               "\nw({:g}, {:g}) = {:g} < wmin, {:g}".format(u_user(u), v_user(v), w_user(wvalue), wmin_user))
-                        #sys.exit("scale range error, please check w scale min limits"
-                              #   "\nw({:g}, {:g}) = {} < wmin, {}".format(u, v, wvalue, wmin))
-                    elif wvalue > wmax and not math.isclose(wvalue, wmax, rel_tol = 0.01):
-                        report_alignment(difference, xwcoord, ywcoord)
-                        print("scale range error, please check w scale max limits", \
-                              "\nw({:g}, {:g}) = {:g} > wmax, {:g}".format(u_user(u), v_user(v), w_user(wvalue), wmax_user))
-                        #sys.exit("scale range error, please check w scale max limits"
-                               #  "\nw({:g}, {:g}) = {} > wmax, {}".format(u, v, wvalue, wmax))
 
-                    if difference > maxdiff:
-                        maxdiff = difference
-                        if "trace_alignment" in log:
+                        if logErrors:
+                            logFile.write( "{{'w': {}, 'error': {}, 'u': {}, 'v': {}}},\n".
+                                           format(w_user(wvalue), hmm*difference, u, v) )
+
+
+                        difference = abs(difference)
+                        if wvalue < wmin and not math.isclose(wvalue, wmin, rel_tol=0.01):
                             report_alignment(difference, xwcoord, ywcoord)
+                            print( "scale range error, please check w scale min limits",
+                                   "\nw({:g}, {:g}) = {:g} < wmin, {:g}".format(u_user(u), v_user(v), w_user(wvalue), wmin_user))
+                            #sys.exit("scale range error, please check w scale min limits"
+                                #     "\nw({:g}, {:g}) = {} < wmin, {}".format(u, v, wvalue, wmin))
+                        elif wvalue > wmax and not math.isclose(wvalue, wmax, rel_tol=0.01):
+                            report_alignment(difference, xwcoord, ywcoord)
+                            print("scale range error, please check w scale max limits",
+                                  "\nw({:g}, {:g}) = {:g} > wmax, {:g}".format(u_user(u), v_user(v), w_user(wvalue), wmax_user))
+                            #sys.exit("scale range error, please check w scale max limits"
+                            #         "\nw({:g}, {:g}) = {} > wmax, {}".format(u, v, wvalue, wmax))
+
+                        if difference > maxdiff:
+                            maxdiff = difference
+                            if "trace_alignment" in log:
+                                report_alignment(difference, xwcoord, ywcoord)
+
+            if logErrors:
+                logFile.write( ']\n')
+                logFile.close()
 
 
             aler = maxdiff * math.sqrt(width * height)
@@ -915,7 +1341,7 @@ error: the v scale line around the region v = {} cannot be represented by a fini
                           'y': 0.0,
                           'text': txt,
                           'width': width/10,
-                      }
+                         }
             if 'extra_texts' not in main_params:
                 main_params['extra_texts'] = [footerText]
             else:
@@ -1029,6 +1455,6 @@ error: the v scale line around the region v = {} cannot be represented by a fini
                                         laxis['h'] = params['h']
 
 
-     # end of __init__
+    # end of __init__
 
 ######################### end of nomogen.py ########################

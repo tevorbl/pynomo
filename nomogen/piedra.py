@@ -78,7 +78,7 @@ left_axis = {
     'extra_titles': [             # extra title for units
         {'dx': -1.3,
          'dy': 0.11,
-         'text': r'$\small MPa$',
+         'text': r'$MPa$',
          'width': 5,
          }],
     'scale_type': 'linear smart',
@@ -97,7 +97,7 @@ right_axis = {
     'extra_titles': [             # extra title for units
         {'dx': -1.3,
          'dy': 0.11,
-         'text': r'$\small in$',
+         'text': r'$in$',
          'width': 5,
          }],
     'scale_type': 'log smart',
@@ -114,7 +114,7 @@ middle_axis = {
     'extra_titles': [
         {'dx': -1.4,
          'dy': 0.11,
-         'text': r'$\small m$',
+         'text': r'$m$',
          'width': 5,
          }],
     'scale_type': 'linear smart',
@@ -129,6 +129,10 @@ block_params0 = {
     'f2_params': middle_axis,
     'f3_params': right_axis,
     'isopleth_values': [[RCmin+(RCmax-RCmin)/12, 'x', Dmin+(Dmax-Dmin)/8]],
+
+    # log alignment errors
+    # If this is missing or False then alignment error logs are disabled
+    'LogAlignment': False,
 }
 
 
@@ -148,7 +152,7 @@ left_axis_psi = {
     'extra_titles': [
         {'dx': -0.1,
          'dy': 0.11,
-         'text': r'$\small psi$',
+         'text': r'$psi$',
          'width': 5,
          }],
     'align_func': lambda u: u / psi_per_MPa,
@@ -166,7 +170,7 @@ right_axis_in = {
     'extra_titles': [
         {'dx': -0.1,
          'dy': 0.11,
-         'text': r'$\small mm$',
+         'text': r'$mm$',
          'width': 5,
          }],
     'align_func': lambda u: u * mm_per_inch,
@@ -184,7 +188,7 @@ middle_axis_feet = {
     'extra_titles': [
         {'dx': -0.1,
          'dy': 0.11,
-         'text': r'$\small ft$',
+         'text': r'$ft$',
          'width': 5,
          }],
     'align_func': lambda u: u / feet_per_metre,
