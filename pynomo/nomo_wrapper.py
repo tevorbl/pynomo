@@ -1154,7 +1154,7 @@ class Nomo_Block_Type_3(Nomo_Block):
         self.shift_stack.append(0)  # initial correction 0
 
     def set_block(self, height=10.0, width=10.0, reference_padding=0.2,
-                  reference_titles=[], reference_color=pyx.color.rgb.black):
+                  reference_titles=None, reference_color=pyx.color.rgb.black):
         """
         sets up equations in block after definitions are given
         """
@@ -1163,7 +1163,7 @@ class Nomo_Block_Type_3(Nomo_Block):
         self.width = width
         self.height = height
         self.reference_padding = reference_padding
-        self.reference_titles = reference_titles
+        self.reference_titles = [] if reference_titles is None else reference_titles
         self.reference_color = reference_color
         self._make_definitions_()
         self._calculate_shifts_()
