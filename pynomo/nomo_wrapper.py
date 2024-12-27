@@ -18,6 +18,15 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+import math
+import copy
+import re
+import pprint
+import random
+
+import numpy as np
+import pyx
+
 from .nomo_axis import Nomo_Axis
 from .nomo_axis_func import Axis_Wrapper, Axes_Wrapper
 from .nomo_grid_box import Nomo_Grid_Box
@@ -25,16 +34,6 @@ from .nomo_grid import Nomo_Grid
 from .nomograph3 import Nomograph3
 from .nomo_axis import find_linear_ticks, find_log_ticks
 from .nomo_axis import find_tick_directions, find_linear_ticks_smart
-
-import math
-import numpy as np
-import scipy
-import pyx
-
-import copy
-import re
-import pprint
-import random
 
 
 class Nomo_Wrapper:
