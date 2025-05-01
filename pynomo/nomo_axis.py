@@ -78,7 +78,7 @@ class Nomo_Axis:
             'title_distance_center': 0.5,
             'title_opposite_tick': True,
             'title_draw_center': False,
-            'title_rotate_text':False,
+            'title_rotate_text': False,
             'title_relative_offset': (0, 0),  # relative (dx,dy)
             'title_absolute_offset': (0, 0),  # absolute (dx,dy)
             'text_format': "$%4.4g$",

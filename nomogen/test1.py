@@ -129,6 +129,10 @@ main_params = {
     'title_box_width': 8.0,
     'title_str': r'$w = {{9u + v} \over {8(u-v) + 10}}$',
     'block_params': [block_params0],
+
+    # set the colour of the ispleth/index line here
+    #'isopleth_params': [ {'color': 'Red'}, ],
+
     'transformations': [('scale paper',)],
 
     'npoints': NN,
@@ -136,7 +140,7 @@ main_params = {
     # instead of forcing the ends of the axes to the corners of the unit square,
     # nomogen can shape the nomogram to minimise parallax errors
     # uncomment the following line to select this option
-    #'muShape': 0,
+    #'muShape': 1,
 
     # text to appear at the foot of the nomogram
     # note that latex rules apply

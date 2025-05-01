@@ -24,10 +24,6 @@ from pynomo.nomographer import Nomographer
 # get current file name
 myfile = os.path.basename(inspect.stack()[0][1]).replace(".py", "")
 
-# alternative with no external dependencies - it works most of the time
-#  myfile =  __name__ == "__main__" and (__file__.endswith(".py") and __file__.replace(".py", "") or "nomogen")
-#             or __name__,
-
 
 
 ########################################
@@ -91,9 +87,9 @@ NN = 16
 # definitions for the axes for pyNomo
 # dictionary with key:value pairs
 
-# km/hr scale of the left axis
-left_axis = {
-    'tag': 'left',            # link to alternative scale
+# km/hr scale of the speed axis
+speed_axis = {
+    'tag': 'speed',            # link to alternative scale
     'u_min': Smin,
     'u_max': Smax,
     'title': 'walking speed',
@@ -109,7 +105,7 @@ left_axis = {
     'tick_side': 'left',
 }
 
-right_axis = {
+gradient_axis = {
     'u_min': Gmin,
     'u_max': Gmax,
     'title': 'gradient %',
@@ -120,8 +116,8 @@ right_axis = {
     'tick_side': 'left',
 }
 
-middle_axis = {
-    'tag': 'middle',            # link to alternative scale
+energy_axis = {
+    'tag': 'energy',            # link to alternative scale
     'u_min': EEmin,
     'u_max': EEmax,
     'title': r'$W kg^{-1}$',
@@ -141,9 +137,9 @@ middle_axis = {
 # assemble the above 3 axes into a block
 block_params0 = {
     'block_type': 'type_9',
-    'f1_params': left_axis,
-    'f2_params': middle_axis,
-    'f3_params': right_axis,
+    'f1_params': speed_axis,     # left axis
+    'f2_params': energy_axis,    # middle
+    'f3_params': gradient_axis,  # right
 
     # the isopleth connects the mid values of the outer axes
     # edit this for different values
@@ -157,13 +153,13 @@ block_params0 = {
 
 ######## the second scales ##############
 
-# mph scale for left axis
+# mph scale for speed axis
 
 km_per_mile = 63360 * 25.4 * 1e-6 # inches per mile * mm per inch * km per mm = 1.609344
-left_axis_mph = {
-    'tag': 'left',
-    'u_min': left_axis['u_min'] / km_per_mile,
-    'u_max': left_axis['u_max'] / km_per_mile,
+speed_axis_mph = {
+    'tag': 'speed',
+    'u_min': speed_axis['u_min'] / km_per_mile,
+    'u_max': speed_axis['u_max'] / km_per_mile,
     'extra_titles':[
         {'dx':-0.1,
          'dy':0.0,
@@ -178,12 +174,12 @@ left_axis_mph = {
 
 block_1_params={
     'block_type':'type_8',
-    'f_params': left_axis_mph,
+    'f_params': speed_axis_mph,
     'isopleth_values':[['x']],
 }
 
 
-# calorie scale for middle axis
+# calorie scale for energy axis
 
 # 1 nutrition calorie Cal 	= 4186.80 	joules J
 # 1 kg = 2.20462262 lbs
@@ -195,10 +191,10 @@ wlbs = round(80*2.20462262)
 
 watts_per_calph = 4186.80*1000/wkg/3600
 
-middle_axis_cal = {
-    'tag': 'middle',
-    'u_min': middle_axis['u_min'] / watts_per_calph,
-    'u_max': middle_axis['u_max'] / watts_per_calph,
+energy_axis_cal = {
+    'tag': 'energy',
+    'u_min': energy_axis['u_min'] / watts_per_calph,
+    'u_max': energy_axis['u_max'] / watts_per_calph,
     'title':r'$kcal/hr ({}kg/{}lbs)$'.format(wkg,wlbs),
     'title_distance_center': 2.0,
     'title_draw_center': True,
@@ -211,7 +207,7 @@ middle_axis_cal = {
 
 block_2_params={
     'block_type':'type_8',
-    'f_params': middle_axis_cal,
+    'f_params': energy_axis_cal,
     'isopleth_values':[['x']],
 }
 
@@ -230,8 +226,16 @@ main_params = {
     'block_params': [block_params0, block_1_params, block_2_params],
 
     'transformations': [('scale paper',)],
-    'muShape': 0,
+
+    # instead of forcing the ends of the axes to the corners of the unit square,
+    # nomogen can shape the nomogram to minimise parallax errors
+    # uncomment the following line to select this option
+    'muShape': 1,
     'npoints': NN,
+
+    # the trace parameter can be set to enable tracing various phases
+    # of generating the nomogram
+    #'trace': 'trace_result',
 
     # text to appear at the foot of the nomogram
     # make this null string for nothing

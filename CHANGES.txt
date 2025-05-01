@@ -1,5 +1,29 @@
 PyNomo
 
+0.3.?
+==================
+
+nomogen update:
+
+   - anamorphosis added to nomogen
+      this prescales the axis function to improve axis scale generation.
+
+   - show progress bar, if tracing enabled show convergence data
+
+   - numerous minor edits:
+     mods after pylint hints
+     added and improved comments
+     nomogen was a class consisting solely of __init()__ => change to normal function
+
+   - tests developed further
+     comments added
+     GENERATE_EXAMPLES now uses perf_counter() for timing
+
+   - added student-t.py and ex_gasoline_pricing.py nomograms
+     student-t is anther example of a nomogram from a difficult equation
+     ex_gasoline_pricing was in the documentation v0.3.2.2, should be in examples/
+
+
 0.3.6 (Sept 2024)
 ==================
 - nomogen updates including tests
