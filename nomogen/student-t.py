@@ -9,6 +9,7 @@ nomogen example to plot Student-T percent point function
 import sys
 import math
 import pyx     # allow colours
+from datetime import datetime  # for adding timestamp
 
 import inspect
 import os
@@ -55,7 +56,7 @@ df_max = 40
 
 # range for the w scale (the middle scale)
 t_min = tvalue(alpha_max, df_max)
-t_max = 65 #tvalue(alpha_min, df_min)
+t_max = 100 #tvalue(alpha_min, df_min)
 
 
 ###############################################################
@@ -79,8 +80,7 @@ left_axis = {
     'title': 'two-tail',
     'title_draw_center': True,
     'title_distance_center': 1.5,
-    #'title_absolute_offset': [0, 0.7],  # shift the title along the axis
-    'title_extra_angle': 180,
+     'title_extra_angle': 180,
     'extra_titles':[
         {'dx':-2.3,
          'dy':0.4,
@@ -90,13 +90,6 @@ left_axis = {
     'tick_levels': 5,
     'tick_text_levels': 3,
     'text_distance_smart': 0.6, # min distance between tick texts
-    #'extra_params': [{'u_min': alpha_min,  # increase tic levels here
-    #                  'u_max': 0.02,
-    #                  'tick_levels': 5,
-    #                  'tick_text_levels': 3,
-    #                  'extra_titles': [],  # don't want to inherit the above 'extra_titles'
-    #                  },
-    #                 ],
     'tick_side': 'right'
 }
 
@@ -161,7 +154,6 @@ left_axis_single = {
     'title': 'one-tail',
     'title_distance_center': -1.5,
     'title_draw_center': True,
-#    'title_absolute_offset': [0, 0.7],  # shift the title along the axis
     'title_extra_angle': 180,
     'title_color': pyx.color.cmyk.Orange,
     'axis_color': pyx.color.cmyk.Orange,
@@ -171,13 +163,6 @@ left_axis_single = {
     'tick_levels': left_axis['tick_levels'],
     'tick_text_levels': left_axis['tick_text_levels'],
     'text_distance_smart': 0.6,  # min distance between tick texts
-    #'extra_params': [{'u_min': alpha_min/2,
-    #                  'u_max': 0.01,
-    #                  'tick_levels': 5,
-    #                  'tick_text_levels': 3,
-    #                  'extra_titles': [],  # don't want to inherit the above 'extra_titles'
-    #                  },
-    #                 ],
     'tick_side': 'left'
 }
 
@@ -200,7 +185,7 @@ main_params = {
     'title_x': 7.0,
     'title_y': 1.0,
     'title_box_width': 8.0,
-    'title_str': r"Student's t distribution",
+    'title_str': r"\Large Student's t distribution",
     'block_params': [block_params0,
                      block_1_params
                      ],
@@ -213,7 +198,7 @@ main_params = {
     # note that latex rules apply
     # a default string will appear if this is omitted
     # make this an empty string to have no footer text
-    #'footer_string': 'tvalue project footer string'
+    'footer_string': f'student-t: ({datetime.now().strftime("%d%b%y, %H:%M:%S")})'
 }
 
 print("calculating the nomogram ...")

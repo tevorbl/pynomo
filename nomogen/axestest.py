@@ -25,14 +25,6 @@ from nomogen import Nomogen
 from pynomo.nomographer import Nomographer
 
 
-###############################################################
-#
-# nr Chebyshev nodes needed to define the scales
-# a higher value may be necessary if the scales are very non-linear
-# a lower value is faster, makes a smoother curve,
-#     but could be less accurate
-NN = 3
-
 # range for the u scale
 umin = 1
 umax = 5
@@ -48,8 +40,11 @@ def do_test( name_template ):
 #    global scale_type
 
     test_nr = 0
-    while True: #for test_nr in range(1,17):
+    while True:  # for test_nr in range(1,17):
         test_nr += 1
+
+        NN = 3        # default nr Chebyshev nodes
+
         if test_nr == 1:
             w = lambda u,v: u+v
             scale_type = 'linear smart'
@@ -70,50 +65,59 @@ def do_test( name_template ):
             w = lambda u, v: u*v
             scale_type = 'log smart'
             title_str = r'$w = uv$'
+            if name_template[-1] =='c': NN = 16
         elif test_nr == 6:
             w = lambda u, v: u / v
             scale_type = 'log smart'
             title_str = r'$w = {u \over v}$'
+            if name_template[-1] =='c': NN = 16
         elif test_nr == 7:
             w = lambda u, v: 1 / (u*v)
             scale_type = 'log smart'
             title_str = r'$w = {1 \over {uv}}$'
+            if name_template[-1] =='c': NN = 16
         elif test_nr == 8:
             w = lambda u, v: v / u
             scale_type = 'log smart'
             title_str = r'$w = {v \over u}$'
+            if name_template[-1] =='c': NN = 16
         elif test_nr == 9:
-            w = lambda u,v: u*u+v
+            w = lambda u,v: u+v*v
             scale_type = 'linear smart'
-            title_str = r'$w = u^2 + v$'
+            title_str = r'$w = u + v^2$'
         elif test_nr == 10:
             w = lambda u, v: u*u - v
             scale_type = 'linear smart'
             title_str = r'$w = u^2-v$'
         elif test_nr == 11:
-            w = lambda u, v: -(u*u + v)
+            w = lambda u, v: -(u + v*v)
             scale_type = 'linear smart'
-            title_str = r'$w = -(u^2 + v)$'
+            title_str = r'$w = -(u + v^2)$'
         elif test_nr == 12:
             w = lambda u, v: v - u*u
             scale_type = 'linear smart'
             title_str = r'$w = v - u^2$'
+            if name_template[-1] =='c': NN = 4
         elif test_nr == 13:
-            w = lambda u, v: u*u*v
+            w = lambda u, v: u**1.5*v
             scale_type = 'log smart'
-            title_str = r'$w = u^2v$'
+            title_str = r'$w = u^{1.5}v$'
+            if name_template[-1] =='c': NN = 16
         elif test_nr == 14:
-            w = lambda u, v: u*u / v
+            w = lambda u, v: u**1.5 / v
             scale_type = 'log smart'
-            title_str = r'$w = {u^2 \over v}$'
+            title_str = r'$w = {u^{1.5} \over v}$'
+            if name_template[-1] =='c': NN = 16
         elif test_nr == 15:
             w = lambda u, v: 1 / (u*u*v)
-            scale_type = 'log'                            # log smart -> bug in printing!
+            scale_type = 'log smart'
             title_str = r'$w = {1 \over {u^2v}}$'
+            if name_template[-1] =='c': NN = 9
         elif test_nr == 16:
             w = lambda u, v: v / u / u
             scale_type = 'log smart'
             title_str = r'$w = {v \over {u^2}}$'
+            if name_template[-1] =='c': NN = 14
         else:
             return #sys.exit( 'there is no test number ({})'.format(test_nr) )
 
@@ -130,7 +134,7 @@ def do_test( name_template ):
             wStr = 'up' if t % 4 < 2 else 'down'
             vStr = 'up' if t % 2 == 0 else 'down'
         tstr = '{}: {}, {}, w {}, v {}'.format(test_name, symStr, scaleStr, wStr, vStr)
-        print( 'test', tstr )
+        print( '\ntest', tstr )
 
 
         left_axis = {
@@ -187,7 +191,7 @@ def do_test( name_template ):
             'filename': test_name,
             'paper_height': 10,  # units are cm
             'paper_width': 10,
-            'title_x': 7.0,
+            'title_x': 5.0 if test_nr in [9, 10, 11, 12] else 7.0,
             'title_y': 2.0,
             'title_box_width': 8.0,
             'title_str': title_str,
@@ -218,11 +222,11 @@ def do_test( name_template ):
     # end of do_test()
 
 
-do_test( 'axtest{}' )
+do_test( 'axtest{}' )  # normal
 
-do_test( 'axtest{}a' )
-do_test( 'axtest{}b' )
-do_test( 'axtest{}c' )
+do_test( 'axtest{}a' )  # anamorphosis on left axis
+do_test( 'axtest{}b' )  # anamorphosis on right axis
+do_test( 'axtest{}c' )  # anamorphosis on middle axis
 
 ################# end of axestest.py ###############
 

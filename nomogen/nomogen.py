@@ -5,7 +5,7 @@
 
     auto generate a 3 line nomogram
 
-    given a function, use numerical techniques to derive a nomogram
+    given a function w=w(u,v), numerically derive a nomogram
     generate the pdf with pynomo
 
 
@@ -124,12 +124,12 @@ def Nomogen( func, main_params ):
 
     # enable logging
     # undocumented feature, for developers only
-    # "trace_init", "trace_cost", "trace_alignment", "trace_result"
+    # "trace_init", "trace_cost", "trace_alignment", "trace_result", "trace_derivative"
     if 'trace' in main_params:
         trace = main_params['trace']
         print('trace is ', trace)
     else:
-        trace = {}
+        trace = {  }
 
 
     global itNr
@@ -301,10 +301,7 @@ def Nomogen( func, main_params ):
 
     #############################################################
     #
-    # scale by 32 for O(h^2), by 1024 for O(h^4)
-    # higher order means larger step size is OK, leaving more bits for accuracy
     sqrt_eps = math.sqrt( sys.float_info.epsilon )
-    step_size = sqrt_eps * 1024
     def derivative(f, x, x1, x0):
         '''
         find the derivative of function f at position x
@@ -316,21 +313,31 @@ def Nomogen( func, main_params ):
         Mathematics of Computation, Vol 51, nr 184, Oct 1988, pp 699-706
         '''
 
+        # scale by 32 for O(h^2), by 1024 for O(h^4)
+        # higher order means larger step size is OK, leaving more bits for accuracy
+        # h^2 is machine precision, so use O(h^2) methods
+        # use O(h^4) methods, seems to give 7 or 8 digits of accuracy in practice
+        step_size = sqrt_eps * 1024
         h = (x1-x0)*step_size   # step size
-        #h^2 is machine precision, so use O(h^2) methods
-        # seems to give 7 or 8 digits of accuracy in practice
 
         try:
-            #r = (f(x+h) - f(x-h))/(2*h)
             r = (f(x-2*h) - 8*f(x-h) + 8*f(x+h) - f(x+2*h))/(12*h)  # O(h^4)
-            if math.isnan(r):
-                print( 'derivative nan at x={}, max={}, min={}, result={}'.format(x, x1, x0, r) )
 
-        except ValueError:
-            r =  math.nan
-            print( '-----------------------------------' )
-            print( 'derivative exception at x={}, max={}, min={}, result={}'.format(x, x1, x0, r) )
-            #print( 'recovery attempted, result may be inaccurate' )
+        except ValueError as e:
+            # try one sided O(h^4) calculation
+            if x >= x1-2*h:
+                r = (-25*f(x) + 48*f(x-h) - 36*f(x-2*h) + 16*f(x-3*h) - 3*f(x-4*h))/(12*h)
+                if 'trace_derivative' in trace:
+                    print( f'attempting to evaluate above valid range ({x1}), r is {r}' )
+            elif x <= x0+2*h:
+                r = (-25*f(x) + 48*f(x+h) - 36*f(x+2*h) + 16*f(x+3*h) - 3*f(x+4*h))/(12*h)
+                if 'trace_derivative' in trace:
+                    print( f'attempting to evaluate below valid range ({x0}), r is {r}' )
+            else:
+                # cannot recover, giving up
+                r =  math.nan
+                print( '-----------------------------------' )
+                print( f'derivative error ({e}) at x={x}, max={x1}, min={x0}' )
         return r
 
 
@@ -349,153 +356,18 @@ def Nomogen( func, main_params ):
     ##########################################
 
     # grid for NN chebyshev points scaled to the interval [0,1]
-    chebyGrid = (1 - np.cos(np.linspace(0, math.pi, NN)))/2
-    unodes = umin + (umax - umin) * chebyGrid
-    vnodes = vmin + (vmax - vmin) * chebyGrid
-    wnodes = wmin + (wmax - wmin) * chebyGrid
+    chebGrid = (1 - np.cos(np.linspace(0, math.pi, NN)))/2
+
+    # scale to each axis
+    unodes = umin + (umax - umin) * chebGrid
+    vnodes = vmin + (vmax - vmin) * chebGrid
+    wnodes = wmin + (wmax - wmin) * chebGrid
 
     if "trace_init" in trace:
         print("unodes is ", unodes)
         print("vnodes is ", vnodes)
         print("wnodes is ", wnodes)
 
-
-    # the u scale has umax at the top, but which way up are the w & v scales?
-    w0 = w(umin, vmin)
-    w1 = w(umax, vmin)
-    w2 = w(umin, vmax)
-    w3 = w(umax, vmax)
-
-    # w scale is max up (aligned to u scale) iff w1 > w0
-    # v scale is max up (aligned to u scale) iff (w1 > w0) xor (w2 > w0)
-
-    if (w0 > w1) != (w2 > w3):
-        # the w scale must be increasing and decreasing at the same time !
-        print( '\nWARNING:\n'
-               'It looks like this nomogram is impossible to generate.\n'
-               'Proceding anyway ...\n')
-
-    if (w1 > w0) == (w2 > w0):
-        # vmax is at the top
-        wB = w0   # bottom of w scale
-        wE = w3   # top of w scale
-        wG = w1   # intersection of TL-BR diagonal and w wsale
-        wH = w2   # intersection of TR-BL diagonal and w wsale
-        yv0 = 0   # y coord of vmin
-        yv2 = 1   # y coord of vmax
-    else:
-        # vmax is at the bottom
-        wB = w2   # bottom of w scale
-        wE = w1   # top of w scale
-        wG = w3   # intersection of TL-BR diagonal and w wsale
-        wH = w0   # intersection of TR-BL diagonal and w wsale
-        yv0 = 1   # y coord of vmin
-        yv2 = 0   # y coord of vmax
-
-    if wE > wB:
-        yw0 = 0   # y coord of wmin
-        yw2 = 1   # y coord of vmax
-    else:
-        yw0 = 1   # y coord of wmin
-        yw2 = 0   # y coord of vmax
-
-    if "trace_init" in trace:
-        print( "wB is ", wB, ", wE is ", wE, ", wG is ", wG, ", wH is ", wH )
-
-
-    ######################################################################
-    # the initial condition is a nomogram that fits inside the unit square
-    # - the u & v scales vary linearly from (0,0) to (0,1) along the
-    #   left and right edges of the unit square
-    # - an initial estimate for the w scale needs to be determined
-
-    xu = np.zeros(NN)
-    yu = chebyGrid
-    xv = np.ones(NN)
-    yv = yv0 + (yv2-yv0)*chebyGrid
-
-    # find an initial position and slope for the xw scale
-    if math.isclose( wG, wH ):
-        # the diagonal index lines meet near the middle of the nomogram
-        # this is a degenerate case, so just use a vertical line
-        xw = np.full(NN, 0.5)
-
-        # yw(w) goes thru (wB,0), (wG,0.5) & (wE,1)
-        # Note: the wX might not be in increasing order (ie wB might be wmax)
-        yw = scipy.interpolate.interp1d( [wB, wG, wE], [0, 0.5, 1] )( wnodes )
-        if "trace_init" in trace:
-            print("yw is ", yw)
-    else:
-        # we can use a linear estimate
-        alphaxw = (wE - wG - wH + wB) / (wE - wB) / (wG - wH)
-        xwB = (wH - wB) / (wE - wB) - alphaxw * (wH - wB)
-        xwE = xwB + alphaxw * (wE - wB)
-        if "trace_init" in trace:
-            print("linear initial estimate found")
-            print("xwB is ", xwB, ", xwE is ", xwE)
-
-        # clip to unit square
-        if xwE > 1:
-            xwE = 1
-        elif xwE < 0:
-            xwE = 0
-        if xwB > 1:
-            xwB = 1
-        elif xwB < 0:
-            xwB = 0
-
-        xw = xwB + chebyGrid * (xwE - xwB)
-        yw = yw0 + (yw2-yw0)*chebyGrid
-
-
-    if False:
-        ################################################
-        #
-        # now we have an initial vale for the w scale
-        # triangulate from corners of unit square and w scale
-        # to find u & v Chebyshev nodes
-        #
-
-        print( "xu is ", xu )
-        print( "yu is ", yu )
-        for i, ut in enumerate( unodes[1:-1], 1 ):
-            wt = w(ut,vtop)
-            xt = evaluate(wt, wnodes, xw)
-            yt = evaluate(wt, wnodes, yw)
-            wb = w(ut,vbottom)
-            xb = evaluate(wb, wnodes, xw)
-            yb = evaluate(wb, wnodes, yw)
-
-            a = 1-yt; b = xt-1; c = -yb; d = xb-1; D = a*d-b*c
-            p = xt-yt; q = -yb
-            xu[i] = (d*p - b*q)/D
-            yu[i] = (-c*p + a*q)/D
-
-        print( "xu is ", xu )
-        print( "yu is ", yu )
-
-
-        print( "------------" )
-        print( "xv is ", xv )
-        print( "yv is ", yv )
-        for i, vt in enumerate( vnodes[1:-1], 1 ):
-            wt = w(umax,vt)
-            xt = evaluate(wt, wnodes, xw)
-            yt = evaluate(wt, wnodes, yw)
-            wb = w(umin,vt)
-            xb = evaluate(wb, wnodes, xw)
-            yb = evaluate(wb, wnodes, yw)
-
-            a = 1-yt; b = xt; c = -yb; d = xb; D = a*d-b*c
-            p = xt; q = 0
-            xv[i] = (d*p - b*q)/D
-            yv[i] = (-c*p + a*q)/D
-
-        print( "xv is ", xv )
-        print( "yv is ", yv )
-
-
-    #############################################################
     #
     # these arrays define the x & y coordinates of the scales
     #
@@ -516,10 +388,187 @@ def Nomogen( func, main_params ):
     diffmatw = diffmat( wnodes )
 
 
+
+    #############################################################
+    #
+    # initial estimate of the nomogram
+    #
+    ##############################################################
+    #
+    # the u scale has umax at the top, but which way up are the w & v scales?
+    #
+    # draw lines from vmin to umin, umax
+    # the difference in the respective w values gives the orientation of w
+    # Note: if the w axis intesrsects v axis at vmin
+    #       then we need to look for another point.
+    #       Keep looking if that point also intersects ...
+    vt = vmin
+    gap = 4*(vmax-vmin)
+    while True:
+        wt0 = w(umin, vt)
+        wt1 = w(umax, vt)
+        if not math.isclose( wt0, wt1, abs_tol=(wmax-wmin)/32 ):
+            break
+        if 'trace_init' in trace:
+            print( f'{params_w["title"]} axis at {wt0} touches the '
+                   f'{params_v["title"]} axis at {vt}, trying another point' )
+
+        vt = vt + gap
+        if vt > vmax:
+            if gap*32 <= vmax-vmin:
+                sys.exit( f'too many points on {params_w["title"]} '
+                          f'axis near the {params_v["title"]} axis - quitting' )
+
+            gap = gap/2
+            vt = vmin + gap/2
+
+    # w scale is max up (aligned to u scale) iff wt1 > wt0
+    wup = wt1 > wt0
+    if wup:
+        yw0 = 0   # y coord of wmin
+        yw1 = 1   # y coord of vmax
+    else:
+        yw0 = 1   # y coord of wmin
+        yw1 = 0   # y coord of vmax
+
+
+    # similar to above, draw lines from umin to vmin & vmax
+    # the w values for th 2 lines determine whether the v scale has
+    # the same or opposite orientation to the w scale
+    # look for another point if the w axis intersects u at umin, etc
+    ut = umin
+    gap = 4*(umax-umin)
+    while True:
+        wt0 = w(ut, vmin)
+        wt1 = w(ut, vmax)
+        if not math.isclose( wt0, wt1, abs_tol=(wmax-wmin)/32 ):
+            break
+        if 'trace_init' in trace:
+            print( f'{params_w["title"]} axis at {wt0} touches the '
+                   f'{params_u["title"]} axis at {ut}, trying another point' )
+
+        ut = ut + gap
+        if ut > umax:
+            if gap*32 <= umax-umin:
+                sys.exit( f'too many points on {params_w["title"]} '
+                          f'axis near the {params_u["title"]} axis - quitting' )
+
+            gap = gap/2
+            ut = umin + gap/2
+
+    vup = wup == (wt1 > wt0)
+
+    if vup:
+        # vmax is at the top
+        vtop = vmax
+        vbottom = vmin
+        yv0 = 0   # y coord of vmin
+        yv1 = 1   # y coord of vmax
+    else:
+        # vmax is at the bottom
+        vtop = vmin
+        vbottom = vmax
+        yv0 = 1   # y coord of vmin
+        yv1 = 0   # y coord of vmax
+    wB = w(umin,vbottom)   # bottom of w scale
+    wE = w(umax,vtop)      # top of w scale
+    wG = w(umax,vbottom)   # intersection of TL-BR diagonal and w wsale
+    wH = w(umin,vtop)      # intersection of TR-BL diagonal and w wsale
+
+    if "trace_init" in trace:
+        print( "wup is ", wup, ", vup is ", vup,
+               "wB is ", wB, ", wE is ", wE, ", wG is ", wG, ", wH is ", wH )
+
+
+    ######################################################################
+    # the initial condition is a nomogram that fits inside the unit square
+    # - choose the u & v scales to vary linearly from (0,0) to (0,1) along
+    #   the left and right edges of the unit square
+    # - an initial estimate for the w scale needs to be determined
+
+    xu = np.zeros(NN)
+    yu = chebGrid
+    xv = np.ones(NN)
+    yv = yv0 + (yv1-yv0)*chebGrid
+
+    # find an initial position and slope for the xw scale
+    if not math.isclose( wG, wH ):
+        # we can use a linear estimate
+        alphaxw = (wE - wG - wH + wB) / (wE - wB) / (wG - wH)
+        xwB = (wH - wB) / (wE - wB) - alphaxw * (wH - wB)
+        xwE = xwB + alphaxw * (wE - wB)
+        if "trace_init" in trace:
+            print("linear initial estimate found")
+            print("xwB is ", xwB, ", xwE is ", xwE)
+
+        # clip to unit square
+        if xwE > 1:
+            xwE = 1
+        elif xwE < 0:
+            xwE = 0
+        if xwB > 1:
+            xwB = 1
+        elif xwB < 0:
+            xwB = 0
+
+        xw = xwB + chebGrid * (xwE - xwB)
+        yw = yw0 + (yw1-yw0)*chebGrid
+    else:
+        # the diagonal index lines intersect at the centre of the nomogram
+        # this is a degenerate case, so use the derivatives
+
+        # find wE using the top isopleth, u=umax & v=vtop,
+        a = (vtop-vbottom) * dwdv_values[-1][-1 if vup else 0]
+        b = (umax-umin) * dwdu_values[-1][-1 if vup else 0]
+
+        if math.isclose(a,b):
+            # this also takes care of the case when a and b are both zero
+            xwE = 0.5 #  just use a vertical line
+        else:
+            xwE = a/(a+b)
+        if xwE < 0:
+            xwE = 0.05
+        elif xwE > 1:
+            xwE = 0.95
+
+        # find wB using the bottom isopleth, u=umin & v=vbottom,
+        a = (umax-umin) * dwdv_values[0][0 if vup else -1]
+        b = (vtop-vbottom) * dwdu_values[0][0 if vup else -1]
+
+        if math.isclose(a,b):
+            # this also takes care of the case when a and b are both zero
+            xwB = 0.5 #  just use a vertical line
+        else:
+            xwB = a/(a+b)
+        if xwB < 0:
+            xwB = 0.05   # clip the lhs
+        elif xwB > 1:
+            xwB = 0.95   # clip the rhs
+
+        # now fill in xw & yw
+        # Notes:
+        #         wX might not be in increasing order (ie wB might be wmax)
+        #         interp1d is legacy, needs to be replaced
+
+        # xw(w) goes thru (wB,xwB), (wG,0.5) & (wE,xwE)
+        xw = scipy.interpolate.interp1d( [wB, wG, wE], [xwB, 0.5, xwE],
+                                         fill_value="extrapolate" )( wnodes )
+
+        # yw(w) goes thru (wB,0), (wG,0.5) & (wE,1)
+        yw = scipy.interpolate.interp1d( [wB, wG, wE], [0, 0.5, 1],
+                                         fill_value="extrapolate" )( wnodes )
+
+        if "trace_init" in trace:
+            print("xw interp1d is ", xw)
+            print("yw interp1d is ", yw)
+
+
     ##########################################
     #
     # this is the optimisation cost function
     #
+    ##########################################
+
     def calc_cost(dummy):
 
         """
@@ -632,7 +681,7 @@ def Nomogen( func, main_params ):
                 dwdu = dwdu_values[iu][iv]
                 def quitOnNan( s, t):
                     sys.exit( """
-                    error: the {} scale line around the region u = {} cannot be evaluated!
+                    error: the {} scale line around the region {} cannot be evaluated!
                     nomogen needs to evaluate the function marginally outside the given range
                     please change this limit and try again
                              """.format(s,t) )
@@ -732,6 +781,8 @@ def Nomogen( func, main_params ):
         '''
         Analytically calculate the jacobian of calc_cost() above
         '''
+
+        ## not yet complete, unused code ##
 
         if muShape != 0:
             lxu, lyu, lxv, lyv, lxw, lyw = np.array_split(dummy, 6)  # L657
@@ -1418,17 +1469,25 @@ error: the {} scale line around the region v = {} cannot be represented by a fin
                                      '}': r'\}' })
             txt = r'\tiny \hfil {}: created by nomogen {} {} \hfil'. \
                   format( main_params['filename'].translate(escapes), datestr, tolstr)
-            #print("txt is \"", txt, "\"", sep='')
+        #print("txt is \"", txt, "\"", sep='')
 
         footerText = {'x': 0,
                       'y': 0.0,
+                      'nomogen_footer' : True,
                       'text': txt,
                       'width': width/10,
                      }
         if 'extra_texts' not in main_params:
             main_params['extra_texts'] = [footerText]
         else:
-            main_params['extra_texts'].append(footerText)
+            # look for an existing nomogen footer in the extra texts
+            # replace if found, otherwise add
+            for i,xt in enumerate( main_params['extra_texts'] ):
+                if 'nomogen_footer' in xt:
+                    main_params['extra_texts'][i] = footerText
+                    break
+            else:
+                main_params['extra_texts'].append(footerText)
 
 
         ##################################################
@@ -1437,8 +1496,8 @@ error: the {} scale line around the region v = {} cannot be represented by a fin
         # swap sides if the w scale is too close to one of the outer scales
         # unless the user has already specified a preference ...
 
-        # account for v & w scales increasing downwards
-        if yw[0] > yw[-1]:
+        # account for scales increasing downwards
+        if (yw[0] > yw[-1]) != (w_plot(wmin_user) > w_plot(wmax_user)):
             txw = xw[::-1]
             wEast = 'left'
             wWest = 'right'
@@ -1446,20 +1505,32 @@ error: the {} scale line around the region v = {} cannot be represented by a fin
             txw = xw
             wEast = 'right'
             wWest = 'left'
-        if yv[0] > yv[-1]:
+
+        if (yv[0] > yv[-1]) != (v_plot(vmin_user) > v_plot(vmax_user)):
             txv = xv[::-1]
             vEast = 'left'
         else:
             txv = xv
             vEast = 'right'
 
+        if u_plot(umin_user) > u_plot(umax_user):
+            #print( 'u scale increases downward' )
+            txu = xu[::-1]
+            uWest = 'right'
+        else:
+            #print( 'u scale increases upward' )
+            txu = xu
+            uWest = 'left'
+
         # the distance between axes
-        distuw = txw - xu
+        distuw = txw - txu
         distvw = txv - txw
+        #print( 'distance u..w is {}, distance v..w is {}'.format(distuw, distvw) )
 
         if ('tick_side' not in params_u) and (np.min(distuw) < 0.2):
-            print('putting u scale ticks on left side')
-            params_u.update({'tick_side': 'left'})
+            print( 'putting u scale ticks on {} side'.format(uWest) )
+            params_u.update({'tick_side': uWest})
+            params_u.update({'turn_relative': True})
 
         if ('tick_side' not in params_v) and (np.min(distvw) < 0.2):
             print( 'putting v scale ticks on {} side'.format(vEast) )
@@ -1469,7 +1540,11 @@ error: the {} scale line around the region v = {} cannot be represented by a fin
 
         #print( 'vw norm is ', np.linalg.norm(xv - xw), ', uw norm is ', np.linalg.norm(xw - xu) )
         if not 'tick_side' in params_w:
-            if np.linalg.norm(distuw) > np.linalg.norm(distvw):
+            if np.min(distuw) < 0.2:
+                params_w.update({'tick_side': wEast})
+            elif np.min(distvw) < 0.2:
+                params_w.update({'tick_side': wWest})
+            elif np.linalg.norm(distuw) > np.linalg.norm(distvw):
                 # the w scale line is closer to the v scale line
                 params_w.update({'tick_side': wWest})
             else:

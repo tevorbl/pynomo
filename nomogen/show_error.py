@@ -51,13 +51,13 @@ eplt.scatter(ax, ay, color='red', s=5, marker='.' )
 
 eplt.grid(True, linestyle='dashed', )
 
-# embolden the zero error line
-y_ticks = eplt.get_yticks(  )
-ind = np.where( y_ticks==0)[0][0]  # find index where error == 0 mm
+# add bold zero error line
+plt.axhline(y=0,
+            color='black',
+            linewidth=1.5,
+            linestyle='--') # dashed line at y==0
 
 gridlines = eplt.yaxis.get_gridlines()
-gridlines[ind].set_color("black")
-gridlines[ind].set_linewidth(1.5)
 
 plt.title( 'Alignment Error for {} nomogram'.format(nomo_error.nomo_id['file']) )
 plt.xlabel( '{} scale'.format(nomo_error.nomo_id['title']) )
@@ -71,3 +71,5 @@ except ValueError:
     plt.savefig( fn.replace('py', 'pdf') )
 
 plt.show()
+
+####################### end of show_error.py #######################

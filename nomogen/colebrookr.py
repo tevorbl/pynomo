@@ -6,10 +6,9 @@ import sys
 
 import inspect
 import os
+from math import sqrt
 
 sys.path.insert(0, "..")
-
-from math import *
 
 from nomogen import Nomogen
 from pynomo.nomographer import Nomographer

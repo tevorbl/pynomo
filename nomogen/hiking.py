@@ -4,8 +4,8 @@
 energy expended while hiking, accounting for slope and speed
 use dual scales for speed & energy axes
 
- https://getpocket.com/explore/item/this-is-how-many-calories-you-burn-on-a-hilly-hike?utm_source=pocket-newtab-global-en-GB
-
+references:
+ https://getpocket.com/explore/item/this-is-how-many-calories-you-burn-on-a-hilly-hike
  https://pubmed.ncbi.nlm.nih.gov/30973477/
 
 """
@@ -226,6 +226,7 @@ main_params = {
     'block_params': [block_params0, block_1_params, block_2_params],
 
     'transformations': [('scale paper',)],
+    'isopleth_params': [{'color': 'Red'}],
 
     # instead of forcing the ends of the axes to the corners of the unit square,
     # nomogen can shape the nomogram to minimise parallax errors

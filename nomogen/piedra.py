@@ -7,8 +7,8 @@
 
 import sys
 
-import inspect
 import os
+import inspect
 
 sys.path.insert(0, "..")
 
@@ -19,11 +19,6 @@ from pynomo.nomographer import Nomographer
 
 # get current file name
 myfile = os.path.basename(inspect.stack()[0][1]).replace(".py", "")
-
-# alternative with no external dependencies - it works most of the time
-#  myfile =  __name__ == "__main__" and (__file__.endswith(".py") and __file__.replace(".py", "") or "nomogen")
-#             or __name__,
-
 
 
 ########################################
@@ -219,12 +214,13 @@ main_params = {
     'extra_texts': [
         {'x': 2,
          'y': 8,
-         'text': r'$V=({0.19+({{{120-RC}\over{2000}}})})\times D^{0.63}$',
+         'text': r'$V=(0.19+{{120-RC}\over2000})\times D^{0.63}$',
          'width': 6,
          }],
 
     # first block is the type_9 nomogram, the dual scale type_9 block follows
     'block_params': [block_params0, block_1_params],
+    'isopleth_params': [{'color': 'Red'}],
 
     'transformations': [('scale paper',)],
     'npoints': NN

@@ -6,10 +6,9 @@ import sys
 
 import inspect
 import os
+from math import sqrt, log10
 
 sys.path.insert(0, "..")
-
-from math import *
 
 from nomogen import Nomogen
 from pynomo.nomographer import Nomographer
@@ -20,7 +19,6 @@ myfile = os.path.basename(inspect.stack()[0][1]).replace(".py", "")
 # alternative with no external dependencies - it works most of the time
 #  myfile =  __name__ == "__main__" and (__file__.endswith(".py") and __file__.replace(".py", "") or "nomogen")
 #             or __name__,
-
 
 
 ########################################

@@ -18,10 +18,6 @@ from pynomo.nomographer import Nomographer
 # get current file name
 myfile = os.path.basename(inspect.stack()[0][1]).replace(".py", "")
 
-# alternative with no external dependencies - it works most of the time
-#  myfile =  __name__ == "__main__" and (__file__.endswith(".py") and __file__.replace(".py", "") or "nomogen")
-#             or __name__,
-
 
 import math
 
@@ -37,14 +33,14 @@ import math
 # 8 −0.110 904 0 × 10−6	3.75	4.0
 # 9  0.126 440 3 × 10−9	4.0	5.0
 
-a = [0.05888460, -0.06136111, -0.002650473, 0.002731125, 0.001802374, -0.001150707, 0.9588528E-4, -0.1109040E-6,
-     0.1264403E-9]
+a = [0.05888460, -0.06136111, -0.002650473, 0.002731125, 0.001802374,
+     -0.001150707, 0.9588528E-4, -0.1109040E-6, 0.1264403E-9]
 
 b = [1.325, 1.87, 2.5, 2.8, 2.938, 3.14, 3.37, 3.75, 4.0]
 
 c = [1.0, 1.0, 2.0, 2.0, 2.42, 2.63, 3.0, 4.0, 5.0]
 
-M = 2.01588  # Molar Mass, g/mol
+M = 2.01588   # Molar Mass, g/mol
 R = 8.314472  # Universal Gas Constant,  J/(mol · K)
 
 
@@ -174,11 +170,11 @@ main_params = {
     # text to appear at the foot of the nomogram
     # make this null string for nothing
     # a default string will appear if this is omitted
-    'footer_string': 'Lemmon equation'
+    'footer_string': 'Lemmon equation',
 }
 
 print("calculating the nomogram ...")
-Nomogen(Z, main_params)  # generate nomogram for yrs function
+Nomogen(Z, main_params)  # generate nomogram for Z function
 
 main_params['filename'] += '.pdf'
 print("printing ", main_params['filename'], " ...")
