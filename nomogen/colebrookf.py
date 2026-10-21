@@ -2,6 +2,9 @@
 
 # nomogen example program
 
+#TODO:  combine with Darcy-Weisbach equation
+#       want to find the pipe diameter
+
 import sys
 
 import inspect

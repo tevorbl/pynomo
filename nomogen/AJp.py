@@ -130,6 +130,11 @@ main_params = {
     'title_str': r'$(1+L)h^2 - Lh(1+p) - {1 \over 3} (1-L)(1+2p) = 0$',
     'block_params': [block_params0],
     'transformations': [('scale paper',)],
+
+    # the trace parameter can be set to enable tracing various phases
+    # of generating the nomogram
+    #'trace': 'trace_cost',
+
     'npoints': NN
 }
 

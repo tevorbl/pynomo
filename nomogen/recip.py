@@ -108,7 +108,7 @@ block_params0 = {
 # the nomogram parameters
 main_params = {
     'filename': myfile,
-    'paper_height': 10,  # units are cm
+    'paper_height': 15,  # units are cm
     'paper_width': 10,
     'title_x': 3.0,
     'title_y': 9.0,
@@ -116,6 +116,7 @@ main_params = {
     'title_str': r'${1 \over R} = {1 \over R_1} + {1 \over R_2}$',
     'block_params': [block_params0],
     'transformations': [('scale paper',)],
+    'isopleth_params': [{'color': 'Red'}],
     'muShape': 4,
     'npoints': NN
 }

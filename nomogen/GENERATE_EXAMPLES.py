@@ -26,6 +26,7 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
+
 import os
 import time
 
@@ -53,7 +54,7 @@ for root, dirs, files in os.walk('.'):
         filelist = files
 
 if myname in filelist: filelist.remove(myname)  # I am not a test file
-if 'nomogen.py' in filelist:  filelist.remove('nomogen.py')
+if 'nomogen.py' in filelist:  filelist.remove('nomogen.py') # nor is this
 
 
 nr_fails = 0
@@ -67,7 +68,7 @@ for filename in filelist:
         print("\n************************************", filename )
         text = open(filename).read()
         if 'Nomographer' in text:
-            print("executing %s" % filename)
+            print( "executing %s" % filename )
             code = compile(text, filename, 'exec')
             tic = time.perf_counter()
             # recover if this test fails
@@ -77,8 +78,12 @@ for filename in filelist:
                 print( "test", filename, "failed -", repr(e) )
                 nr_fails = nr_fails + 1
             toc = time.perf_counter()
-            print('Took %3.1f s for %s to execute.' % (toc - tic, filename))
+            print( 'Took %3.1f s for %s to execute.' % (toc - tic, filename) )
             # execfile(filename)
+
+
+            # python module for testing for regression errors
+            # https://github.com/jsspencer/testcode
 
             # comapre 2 pdf files:
             # https://www.tutorialspoint.com/check-if-two-pdf-documents-are-identical-with-python

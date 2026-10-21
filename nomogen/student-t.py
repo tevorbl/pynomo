@@ -56,7 +56,7 @@ df_max = 40
 
 # range for the w scale (the middle scale)
 t_min = tvalue(alpha_max, df_max)
-t_max = 100 #tvalue(alpha_min, df_min)
+t_max = tvalue(alpha_min, df_min)
 
 
 ###############################################################
@@ -99,7 +99,7 @@ right_axis = {
     'title': r'$v$ degrees of freedom',
     'title_x_shift': -0.4,
     'scale_type': 'log smart',
-    'anamorphosis': {'func': math.atan, 'inv': math.tan},
+    'preScale': {'func': math.atan, 'inv': math.tan},
     'tick_levels': 2,
     'tick_text_levels': 2,
     'extra_params': [{'u_min': 10.0,           # reduce tic levels here
@@ -191,6 +191,7 @@ main_params = {
                      ],
     'isopleth_params': [{'color': 'Red'}],
     'transformations': [('scale paper',)],
+    #'muShape': 1,
 
     'npoints': NN,
 

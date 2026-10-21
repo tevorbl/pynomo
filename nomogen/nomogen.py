@@ -9,7 +9,7 @@
     generate the pdf with pynomo
 
 
-    Copyright (C) 2021-2025  Trevor Blight
+    Copyright (C) 2021-2026  Trevor Blight
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -117,10 +117,26 @@ def Nomogen( func, main_params ):
     print( "using", NN, "Chebyshev points" )
 
     if 'muShape' in main_params and main_params['muShape']:
-        muShape = 1.0e-14
+        # magic scaling constant
+        # tune this so shape error eShape is same order as
+        # or slightly smaller than eAcc & other costs
+        muShape = 1.0e-9
         print( 'setting nomogram for best measureability, muShape is', muShape )
     else:
         muShape = 0
+
+
+    width = 10 * main_params['paper_width']  # convert cm -> mm
+    height = 10 * main_params['paper_height']
+
+    # allow nomogram tolerance == +/- 0.1 mm
+    # this is how many dots 0.1mm square fit into the nomogram area
+    resolution = 10 * 10 * width * height
+
+    # grid for NN chebyshev nodes scaled to the interval [0,1]
+    # nodes must be in increasing order
+    chebGrid = (1 - np.cos(np.linspace(0, math.pi, NN)))/2
+    # print( chebGrid )
 
     # enable logging
     # undocumented feature, for developers only
@@ -130,173 +146,6 @@ def Nomogen( func, main_params ):
         print('trace is ', trace)
     else:
         trace = {  }
-
-
-    global itNr
-    itNr = 0
-
-
-    # get the min & max input values
-    # check for sanity
-    # plotted values are linear, log or user defined by 'anamorphosis' parameter
-    # convert between plotted and user values
-    # if log scale, use log of corresponding variable
-    # define plot * user conversion functions
-
-    params_u = main_params['block_params'][0]['f1_params']
-    umin_user = params_u['u_min']
-    umax_user = params_u['u_max']
-    if umax_user < umin_user:
-        sys.exit("error in {} scale: umax ({}) is less than umin ({})"
-                 .format(params_u['title'], umax_user, umin_user))
-    if 'anamorphosis' in params_u:
-        u_plot = params_u['anamorphosis']['func']
-        u_user = params_u['anamorphosis']['inv']
-    elif 'scale_type' in params_u and 'log' in params_u['scale_type']:
-        if umin_user <= 0:
-            sys.exit("error in {} scale: cannot have umin ({}) <= 0 for log scale".
-                     format(params_u['title'], umin_user))
-        u_plot = math.log
-        u_user = math.exp
-    else:
-        u_user = u_plot = lambda t: t
-
-    params_v = main_params['block_params'][0]['f3_params']
-    vmin_user = params_v['u_min']
-    vmax_user = params_v['u_max']
-    if vmax_user < vmin_user:
-        sys.exit("error in {} scale: vmax ({}) is less than vmin ({})".
-                 format(params_v['title'], vmax_user, vmin_user))
-    if 'anamorphosis' in params_v:
-        v_plot = params_v['anamorphosis']['func']
-        v_user = params_v['anamorphosis']['inv']
-    elif 'scale_type' in params_v and 'log' in params_v['scale_type']:
-        if vmin_user <= 0:
-            sys.exit("error in {} scale: cannot have vmin ({}) <= 0 for log scale".
-                     format(params_v['title'], vmin_user))
-        v_plot = math.log
-        v_user = math.exp
-    else:
-        v_user = v_plot = lambda t: t
-
-    params_w = main_params['block_params'][0]['f2_params']
-    wmin = params_w['u_min']
-    wmax = params_w['u_max']
-    # get check the w scale range
-    wval = [ wmin, wmax, func(umin_user, vmin_user), func(umax_user, vmin_user),
-             func(umin_user, vmax_user), func(umax_user, vmax_user) ]
-    wmin_user = min(wval)
-    wmax_user = max(wval)
-    #print( 'wmin_user is', wmin_user, ', wmax_user is ', wmax_user )
-    if 'anamorphosis' in params_w:
-        w_plot = params_w['anamorphosis']['func']
-        w_user = params_w['anamorphosis']['inv']
-    elif 'scale_type' in params_w and 'log' in params_w['scale_type']:
-        if wmin_user <= 0:
-            sys.exit("error in {} scale: cannot have wmin ({}) <= 0 for log scale".
-                     format(params_w['title'], wmin_user))
-        w_plot = math.log
-        w_user = math.exp
-    else:
-        w_user = w_plot = lambda t: t
-
-    # convert from user to plot values
-    umin = min(u_plot(umin_user), u_plot(umax_user))
-    umax = max(u_plot(umin_user), u_plot(umax_user))
-    vmin = min(v_plot(vmin_user), v_plot(vmax_user))
-    vmax = max(v_plot(vmin_user), v_plot(vmax_user))
-    wmin = min(w_plot(wmin_user), w_plot(wmax_user))
-    wmax = max(w_plot(wmin_user), w_plot(wmax_user))
-
-    width = 10 * main_params['paper_width']  # convert cm -> mm
-    height = 10 * main_params['paper_height']
-
-    # allow nomogram tolerance == +/- 0.1 mm
-    # this is how many dots 0.1mm square fit into the nomogram area
-    resolution = 10 * 10 * width * height
-
-
-    #######################################
-    # call nomogram function
-    # convert between plotted units and user-defined units
-    # u, v and returned value are plot values,
-    # call func with user-defined values
-    def w(u, v):
-        r = func( u_user(u), v_user(v) )
-        return w_plot(r)
-
-
-    #################################################
-    #
-    # evaluate function at a,
-    # given an array of Chebyshev nodes and function values
-    # a   - perform barycentric interpolation at position a
-    # an  - array of nodes
-    # fan - array of function values at the nodes an
-
-    def evaluate(a, an, fan):
-
-        # special case: a is one of the grid points
-        if a in an:
-            if an[0] <= an[-1]:                        # is an sorted increasing or decreasing?
-                t = np.searchsorted(an, a)
-            else:
-                t = NN-1-np.searchsorted(an[::-1], a)  # reverse an
-                print('unexpected searchsorted(', an, a, ') -> ', t)
-            return fan[t]
-
-        # apply correction factors
-        # - first and last terms have weight 1/2,
-        # - even terms have opposite sign
-        if len(an) % 2 == 0:
-            sumA = (fan[0]/(a - an[0]) - fan[-1]/(a - an[-1])) / 2
-            sumB = (1/(a - an[0]) - 1/(a - an[-1])) / 2
-        else:
-            sumA = (fan[0] / (a - an[0]) + fan[-1] / (a - an[-1])) / 2
-            sumB = (1 / (a - an[0]) + 1 / (a - an[-1])) / 2
-
-        # barycentric interpolation on a Chebyshev grid ...
-        for tan, tfan in zip(an, fan):
-            t = 1 / (a - tan)
-            sumA = t * tfan - sumA
-            sumB = t - sumB
-        return sumA / sumB
-
-
-    ############################################################
-    #
-    # calculate derivative matrix for a chebyshev grid
-    # see cheb.m in "Spectral Methods in Matlab", Ch 6, by Lloyd N. Trefethen
-    # x: the chebyshev grid
-    # return the derivative matrix
-    def diffmat(x):
-
-        n = len(x)
-
-        # deal with the pathological case
-        if n == 0:
-            return 0
-
-        # replicate the Chebyshev grid onto a nxn matrix
-        XX = np.tile( x, (n,1) )
-
-        # coefficients, alternating 1/-1/..., first & last entries are +/-2
-        c = np.empty((n,1))  # column vector
-        c[::2] = 1            # evens
-        c[1::2] = -1          # odds
-        c[0] = 2; c[-1] *= 2  # first * last
-
-        D = c * (1/c).T  # nxn matrix
-
-        # off diagonal entries
-        dXX = XX.T - XX + np.eye(n)
-        D = D / dXX
-
-        # diagonal entries - subtract sum of each row
-        for ii in range(n):
-            D[ii][ii] -= D[ii].sum()
-
-        return D
 
 
     #############################################################
@@ -313,9 +162,8 @@ def Nomogen( func, main_params ):
         Mathematics of Computation, Vol 51, nr 184, Oct 1988, pp 699-706
         '''
 
-        # scale by 32 for O(h^2), by 1024 for O(h^4)
+        # scale by 1024 for O(h^4)
         # higher order means larger step size is OK, leaving more bits for accuracy
-        # h^2 is machine precision, so use O(h^2) methods
         # use O(h^4) methods, seems to give 7 or 8 digits of accuracy in practice
         step_size = sqrt_eps * 1024
         h = (x1-x0)*step_size   # step size
@@ -341,6 +189,192 @@ def Nomogen( func, main_params ):
         return r
 
 
+    class Axis:
+        '''
+        encapsulate an axis of the nomogram
+        axis equation, x & y coordinates
+        Chebyshev grid
+        preScale function
+        '''
+
+        # constructor
+        def __init__( self, aparams, limits=None ):
+            '''
+            axis constructor
+            aparams is the axis parameter block
+            limits is a list of values that may limit the range of the axis
+               this might be used for a w axis that has limits determined by
+               function evaluations
+            get the min & max input values
+            check for sanity
+            plotted values are linear, log or user defined by 'preScale' parameter
+            convert between plotted and user values
+            if log scale, use log of corresponding variable
+            define plot * user conversion functions
+            set up the Chebyshev nodes and differentiation matrix
+            '''
+            self.params = aparams
+            self.title = aparams['title']
+            if limits is None:
+                self.max_user = aparams['u_max']
+                self.min_user = aparams['u_min']
+                if self.max_user < self.min_user:
+                    sys.exit("error in {} scale: umax ({}) is less than umin ({})"
+                             .format(self.title, self.max_user, self.min_user))
+            else:
+                a = limits + [aparams['u_max'], aparams['u_min']]
+                self.max_user = max(a)
+                self.min_user = min(a)
+
+            if 'preScale' in aparams:
+                self.plot = aparams['preScale']['func']
+                self.user = aparams['preScale']['inv']
+                t = (self.min_user + self.max_user)/2
+                if not math.isclose( t, self.user(self.plot(t)) ):
+                    sys.exit( f"""
+preScale functions 'func' and 'inv' are not inverses of each other
+func({t}) is {self.plot(t)}, inv({self.plot(t)}) is {self.user(t)}
+""" )
+            elif 'scale_type' in aparams and 'log' in aparams['scale_type']:
+                if self.min_user <= 0:
+                    sys.exit("error in {} scale: cannot have min ({}) <= 0 for log scale".
+                             format(self.title, self.min_user))
+                self.plot = math.log
+                self.user = math.exp
+            else:
+                self.user = self.plot = lambda t: t
+
+            # convert from user to plot values
+            a = self.plot(self.min_user)
+            b = self.plot(self.max_user)
+            self.min = min(a,b)
+            self.max = max(a,b)
+
+            # with min & max finalised, we can add nodes
+            # scale to the axis
+            # these arrays define the x & y coordinates of the scales
+            self.nodes = self.min + (self.max - self.min) * chebGrid
+            self.bary = scipy.interpolate.BarycentricInterpolator(self.nodes)
+            self.diffmat = self._cheb()  # the differentiation matrix
+
+
+        def _cheb(self):
+            '''
+            compute the derivative matrix for a chebyshev grid
+            see cheb.m in "Spectral Methods in Matlab", Ch 6, by Lloyd N. Trefethen
+            x: the chebyshev grid
+            return the derivative matrix
+            '''
+
+            n = len(self.nodes)  # nomogen guarantees that n >= 3
+
+            # replicate the Chebyshev grid onto a nxn matrix
+            XX = np.tile( self.nodes, (n,1) )
+
+            # coefficients, alternating 1/-1/..., first & last entries are +/-2
+            c = np.empty((n,1))  # column vector
+            c[::2] = 1            # evens
+            c[1::2] = -1          # odds
+            c[0] = 2; c[-1] *= 2  # first & last
+
+            D = c * (1/c).T  # nxn matrix
+
+            # off diagonal entries
+            dXX = XX.T - XX + np.eye(n)
+            D = D / dXX
+
+            # diagonal entries - subtract sum of each row
+            for ii in range(n):
+                D[ii][ii] -= D[ii].sum()
+
+            return D
+
+
+        def __call__( self, a, afn ):
+            '''
+            evaluate function at a using barycentric interpolation,
+            given the objects array of Chebyshev nodes and function values
+            a   - perform barycentric interpolation at position a
+            afn - array of function values at this objects nodes
+            '''
+
+            # special case: a is one of the grid points
+            if a in self.nodes:
+                t = np.searchsorted(self.nodes, a)
+                return afn[t]
+
+            # apply correction factors
+            # - first and last terms have weight 1/2,
+            # - even terms have opposite sign
+            if len(self.nodes) % 2 == 0:
+                sumA = (afn[0]/(a - self.nodes[0]) - afn[-1]/(a - self.nodes[-1])) / 2
+                sumB = (1/(a - self.nodes[0]) - 1/(a - self.nodes[-1])) / 2
+            else:
+                sumA = (afn[0] / (a - self.nodes[0]) + afn[-1] / (a - self.nodes[-1])) / 2
+                sumB = (1 / (a - self.nodes[0]) + 1 / (a - self.nodes[-1])) / 2
+
+            # barycentric interpolation on a Chebyshev grid ...
+            for tan, tfan in zip(self.nodes, afn):
+                t = 1 / (a - tan)
+                sumA = t * tfan - sumA
+                sumB = t - sumB
+            return sumA / sumB
+
+
+        def derivative( self, afn ):
+            '''
+            return derivative of function defined by values afn
+            see cheb.m in "Spectral Methods in Matlab", Ch 6, by Lloyd N. Trefethen
+            use the object's barycentric differentiation matrix
+            '''
+            return self.diffmat @ afn
+
+
+        # print string
+        def __str__(self):
+            '''
+            user friendly print() string
+            '''
+            return '\'{}\' axis, min is {:.4g}, max is {:.4g}'. \
+                        format(self.title, self.min_user, self.max_user )
+
+
+        def __repr__(self):
+            '''
+            print full class data
+            '''
+            return 'title is \'{}\',' \
+                   '\n\tuser min is {:.4g}, user max is {:.4g}' \
+                   ', plot min is {:.4g}, plot max is {:.4g}' \
+                   ',\n\tnodes are {}'. \
+                        format(self.title, self.min_user, self.max_user, \
+                               self.min, self.max, self.nodes )
+
+
+    uAxis = Axis( main_params['block_params'][0]['f1_params'] )
+    vAxis = Axis( main_params['block_params'][0]['f3_params'] )
+
+    # adjust min & max for w axis
+    wvals = [ func(uAxis.min_user, vAxis.min_user), func(uAxis.max_user, vAxis.min_user),
+              func(uAxis.min_user, vAxis.max_user), func(uAxis.max_user, vAxis.max_user) ]
+    wAxis = Axis( main_params['block_params'][0]['f2_params'], wvals )
+
+    if "trace_init" in trace:
+        print( 'lhs (u) axis: ', repr(uAxis) )
+        print( 'rhs (v) axis: ', repr(vAxis) )
+        print( 'middle (w) axis: ', repr(wAxis) )
+
+
+    #######################################
+    # call nomogram function
+    # convert between plotted units and user-defined units
+    # u, v and returned value are plot values,
+    # call func with user-defined values
+    def w(u, v):
+        r = func( uAxis.user(u), vAxis.user(v) )
+        return wAxis.plot(r)
+
+
     ######################################################
     #
     # the nomogram is built inside a unit square
@@ -355,37 +389,14 @@ def Nomogen( func, main_params ):
     #
     ##########################################
 
-    # grid for NN chebyshev points scaled to the interval [0,1]
-    chebGrid = (1 - np.cos(np.linspace(0, math.pi, NN)))/2
 
-    # scale to each axis
-    unodes = umin + (umax - umin) * chebGrid
-    vnodes = vmin + (vmax - vmin) * chebGrid
-    wnodes = wmin + (wmax - wmin) * chebGrid
+    w_values = np.array([[w(u, v) for v in vAxis.nodes] for u in uAxis.nodes])  # L141
 
-    if "trace_init" in trace:
-        print("unodes is ", unodes)
-        print("vnodes is ", vnodes)
-        print("wnodes is ", wnodes)
+    dwdu_values = np.array( [[ derivative(lambda uu: w(uu, v), u, uAxis.max, uAxis.min )
+                               for v in vAxis.nodes] for u in uAxis.nodes])
 
-    #
-    # these arrays define the x & y coordinates of the scales
-    #
-    baryu = scipy.interpolate.BarycentricInterpolator(unodes)
-    baryv = scipy.interpolate.BarycentricInterpolator(vnodes)
-    baryw = scipy.interpolate.BarycentricInterpolator(wnodes)
-
-    w_values = np.array([[w(u, v) for v in vnodes] for u in unodes])  # L141
-
-    dwdu_values = np.array( [[ derivative(lambda uu: w(uu, v), u, umax, umin )
-                               for v in vnodes] for u in unodes])
-
-    dwdv_values = np.array( [[derivative(lambda vv: w(u, vv), v, vmax, vmin )
-                               for v in vnodes] for u in unodes])
-
-    diffmatu = diffmat( unodes )
-    diffmatv = diffmat( vnodes )
-    diffmatw = diffmat( wnodes )
+    dwdv_values = np.array( [[derivative(lambda vv: w(u, vv), v, vAxis.max, vAxis.min )
+                               for v in vAxis.nodes] for u in uAxis.nodes])
 
 
 
@@ -395,96 +406,88 @@ def Nomogen( func, main_params ):
     #
     ##############################################################
     #
-    # the u scale has umax at the top, but which way up are the w & v scales?
+    # the u scale has uAxis.max at the top, but which way up are the w & v scales?
     #
-    # draw lines from vmin to umin, umax
+    # draw lines from vmin to uAxis.min, uAxis.max
     # the difference in the respective w values gives the orientation of w
     # Note: if the w axis intesrsects v axis at vmin
     #       then we need to look for another point.
     #       Keep looking if that point also intersects ...
-    vt = vmin
-    gap = 4*(vmax-vmin)
+    vt = vAxis.min
+    gap = 4*(vAxis.max-vAxis.min)
     while True:
-        wt0 = w(umin, vt)
-        wt1 = w(umax, vt)
-        if not math.isclose( wt0, wt1, abs_tol=(wmax-wmin)/32 ):
+        wt0 = w(uAxis.min, vt)
+        wt1 = w(uAxis.max, vt)
+        if not math.isclose( wt0, wt1, abs_tol=(wAxis.max-wAxis.min)/64 ):
             break
         if 'trace_init' in trace:
-            print( f'{params_w["title"]} axis at {wt0} touches the '
-                   f'{params_v["title"]} axis at {vt}, trying another point' )
+            print( f'{wAxis.title} axis at {wt0} touches the '
+                   f'{vAxis.title} axis at {vt}, trying another point' )
 
         vt = vt + gap
-        if vt > vmax:
-            if gap*32 <= vmax-vmin:
-                sys.exit( f'too many points on {params_w["title"]} '
-                          f'axis near the {params_v["title"]} axis - quitting' )
+        if vt > vAxis.max:
+            if gap*32 <= vAxis.max-vAxis.min:
+                sys.exit( f'too many points on {wAxis.title} '
+                          f'axis near the {vAxis.title} axis - quitting' )
 
             gap = gap/2
-            vt = vmin + gap/2
+            vt = vAxis.min + gap/2
 
     # w scale is max up (aligned to u scale) iff wt1 > wt0
     wup = wt1 > wt0
     if wup:
         yw0 = 0   # y coord of wmin
-        yw1 = 1   # y coord of vmax
+        yw1 = 1   # y coord of vAxis.max
     else:
         yw0 = 1   # y coord of wmin
-        yw1 = 0   # y coord of vmax
+        yw1 = 0   # y coord of vAxis.max
 
 
-    # similar to above, draw lines from umin to vmin & vmax
+    # similar to above, draw lines from uAxis.min to vmin & vAxis.max
     # the w values for th 2 lines determine whether the v scale has
     # the same or opposite orientation to the w scale
-    # look for another point if the w axis intersects u at umin, etc
-    ut = umin
-    gap = 4*(umax-umin)
+    # look for another point if the w axis intersects u at uAxis.min, etc
+    ut = uAxis.min
+    gap = 4*(uAxis.max-uAxis.min)
     while True:
-        wt0 = w(ut, vmin)
-        wt1 = w(ut, vmax)
-        if not math.isclose( wt0, wt1, abs_tol=(wmax-wmin)/32 ):
+        wt0 = w(ut, vAxis.min)
+        wt1 = w(ut, vAxis.max)
+        if not math.isclose( wt0, wt1, abs_tol=(wAxis.max-wAxis.min)/64 ):
             break
         if 'trace_init' in trace:
-            print( f'{params_w["title"]} axis at {wt0} touches the '
-                   f'{params_u["title"]} axis at {ut}, trying another point' )
+            print( f'{wAxis.title} axis at {wt0} touches the '
+                   f'{uAxis.title} axis at {ut}, trying another point' )
 
         ut = ut + gap
-        if ut > umax:
-            if gap*32 <= umax-umin:
-                sys.exit( f'too many points on {params_w["title"]} '
-                          f'axis near the {params_u["title"]} axis - quitting' )
+        if ut > uAxis.max:
+            if gap*32 <= uAxis.max-uAxis.min:
+                sys.exit( f'too many points on {wAxis.title} '
+                          f'axis near the {uAxis.title} axis - quitting' )
 
             gap = gap/2
-            ut = umin + gap/2
+            ut = uAxis.min + gap/2
 
     vup = wup == (wt1 > wt0)
 
     if vup:
-        # vmax is at the top
-        vtop = vmax
-        vbottom = vmin
+        # vAxis.max is at the top
+        vtop = vAxis.max
+        vbottom = vAxis.min
         yv0 = 0   # y coord of vmin
-        yv1 = 1   # y coord of vmax
+        yv1 = 1   # y coord of vAxis.max
     else:
-        # vmax is at the bottom
-        vtop = vmin
-        vbottom = vmax
+        # vAxis.max is at the bottom
+        vtop = vAxis.min
+        vbottom = vAxis.max
         yv0 = 1   # y coord of vmin
-        yv1 = 0   # y coord of vmax
-    wB = w(umin,vbottom)   # bottom of w scale
-    wE = w(umax,vtop)      # top of w scale
-    wG = w(umax,vbottom)   # intersection of TL-BR diagonal and w wsale
-    wH = w(umin,vtop)      # intersection of TR-BL diagonal and w wsale
-
-    if "trace_init" in trace:
-        print( "wup is ", wup, ", vup is ", vup,
-               "wB is ", wB, ", wE is ", wE, ", wG is ", wG, ", wH is ", wH )
+        yv1 = 0   # y coord of vAxis.max
 
 
     ######################################################################
     # the initial condition is a nomogram that fits inside the unit square
     # - choose the u & v scales to vary linearly from (0,0) to (0,1) along
     #   the left and right edges of the unit square
-    # - an initial estimate for the w scale needs to be determined
+    # - determine an initial estimate for the w scale
 
     xu = np.zeros(NN)
     yu = chebGrid
@@ -492,6 +495,15 @@ def Nomogen( func, main_params ):
     yv = yv0 + (yv1-yv0)*chebGrid
 
     # find an initial position and slope for the xw scale
+    wB = w(uAxis.min,vbottom)   # bottom of w scale
+    wE = w(uAxis.max,vtop)      # top of w scale
+    wG = w(uAxis.max,vbottom)   # intersection of TL-BR diagonal and w wsale
+    wH = w(uAxis.min,vtop)      # intersection of TR-BL diagonal and w wsale
+
+    if "trace_init" in trace:
+        print( "wup is ", wup, ", vup is ", vup,
+               "wB is ", wB, ", wE is ", wE, ", wG is ", wG, ", wH is ", wH )
+
     if not math.isclose( wG, wH ):
         # we can use a linear estimate
         alphaxw = (wE - wG - wH + wB) / (wE - wB) / (wG - wH)
@@ -513,17 +525,22 @@ def Nomogen( func, main_params ):
 
         xw = xwB + chebGrid * (xwE - xwB)
         yw = yw0 + (yw1-yw0)*chebGrid
+
+        if "trace_init" in trace:
+            print("xw is ", xw)
+            print("yw is ", yw)
+
     else:
         # the diagonal index lines intersect at the centre of the nomogram
         # this is a degenerate case, so use the derivatives
 
-        # find wE using the top isopleth, u=umax & v=vtop,
+        # find xwE using the top isopleth, u=uAxis.max & v=vtop,
         a = (vtop-vbottom) * dwdv_values[-1][-1 if vup else 0]
-        b = (umax-umin) * dwdu_values[-1][-1 if vup else 0]
+        b = (uAxis.max-uAxis.min) * dwdu_values[-1][-1 if vup else 0]
 
         if math.isclose(a,b):
             # this also takes care of the case when a and b are both zero
-            xwE = 0.5 #  just use a vertical line
+            xwE = 0.5 #  put it in the middle
         else:
             xwE = a/(a+b)
         if xwE < 0:
@@ -531,13 +548,13 @@ def Nomogen( func, main_params ):
         elif xwE > 1:
             xwE = 0.95
 
-        # find wB using the bottom isopleth, u=umin & v=vbottom,
-        a = (umax-umin) * dwdv_values[0][0 if vup else -1]
+        # find wB using the bottom isopleth, u=uAxis.min & v=vbottom,
+        a = (uAxis.max-uAxis.min) * dwdv_values[0][0 if vup else -1]
         b = (vtop-vbottom) * dwdu_values[0][0 if vup else -1]
 
         if math.isclose(a,b):
             # this also takes care of the case when a and b are both zero
-            xwB = 0.5 #  just use a vertical line
+            xwB = 0.5 #  put it in the middle
         else:
             xwB = a/(a+b)
         if xwB < 0:
@@ -547,20 +564,38 @@ def Nomogen( func, main_params ):
 
         # now fill in xw & yw
         # Notes:
-        #         wX might not be in increasing order (ie wB might be wmax)
-        #         interp1d is legacy, needs to be replaced
+        #      -  wX might not be in increasing order (ie wB might be wmax)
+        #      -  use linear interpolation so xw & yw are
+        #         guaranteed to lie inside the unit square
 
         # xw(w) goes thru (wB,xwB), (wG,0.5) & (wE,xwE)
-        xw = scipy.interpolate.interp1d( [wB, wG, wE], [xwB, 0.5, xwE],
-                                         fill_value="extrapolate" )( wnodes )
-
         # yw(w) goes thru (wB,0), (wG,0.5) & (wE,1)
-        yw = scipy.interpolate.interp1d( [wB, wG, wE], [0, 0.5, 1],
-                                         fill_value="extrapolate" )( wnodes )
+        if wup:
+            aw = [wB, wG, wE]
+            ax = [xwB, 0.5, xwE]
+            ay = [0, 0.5, 1]
+        else:
+            aw = [wE, wG, wB]
+            ax = [xwE, 0.5, xwB]
+            ay = [1, 0.5, 0]
+        xw = np.interp( wAxis.nodes, aw, ax )
+        yw = np.interp( wAxis.nodes, aw, ay )
 
         if "trace_init" in trace:
-            print("xw interp1d is ", xw)
-            print("yw interp1d is ", yw)
+            print("xw np.interp is ", xw)
+            print("yw np.interp is ", yw)
+
+        # interp1d is legacy and needs to be removed
+        # for now, keep it here for checking
+        if not np.allclose( xw, scipy.interpolate.interp1d( [wB, wG, wE], [xwB, 0.5, xwE],
+                                         fill_value="extrapolate" )( wAxis.nodes ) ):
+            sys.exit( 'xw interpolation failure' )
+
+        if not np.allclose( yw, scipy.interpolate.interp1d( [wB, wG, wE], [0, 0.5, 1],
+                                         fill_value="extrapolate" )( wAxis.nodes ) ):
+            sys.exit( 'yw interpolation failure' )
+
+
 
 
     ##########################################
@@ -599,11 +634,18 @@ def Nomogen( func, main_params ):
             # the exp function gets big quickly as the points approach
             # & exceed the boundaries of the unit square.
             # apply this function to each point in the u & v axes
-            aa = 40
-            cost_pos_u = np.exp(aa*(-0.3-lxu)) + np.exp(aa*(lxu-1.3)) + \
-                np.exp(aa*(-0.3-lyu)) + np.exp(aa*(lyu-1.3)) + 1
-            cost_pos_v = np.exp(aa*(-0.3-lxv)) + np.exp(aa*(lxv-1.3)) + \
-                np.exp(aa*(-0.3-lyv)) + np.exp(aa*(lyv-1.3)) + 1
+            # evaluate only for closest edge to each point
+            # ignore cost of w axis because it is between the other 2 axes
+
+            aa = 40 # magic scaling constant for calculating cost
+                    # of approaching edge of paper area
+            # the points are closest which edge?
+            t1x = np.maximum( -0.3-lxu, lxu-1.3 )  # left/right edge
+            t1y = np.maximum( -0.3-lyu, lyu-1.3 )  # top/bottom edge
+            cost_pos_u = np.exp( aa*np.maximum(t1x, t1y) )
+            t1x = np.maximum( -0.3-lxv, lxv-1.3 )
+            t1y = np.maximum( -0.3-lyv, lyv-1.3 )
+            cost_pos_v = np.exp( aa*np.maximum(t1x, t1y) )
 
         else:
             # the corner coordinates are fixed, so are not part of the optimisation
@@ -628,32 +670,37 @@ def Nomogen( func, main_params ):
 
         # estimate position & derivative error
 
-        fdxdu = diffmatu @ lxu
-        fdydu = diffmatu @ lyu
-        fdxdv = diffmatv @ lxv
-        fdydv = diffmatv @ lyv
-        fdxdw = diffmatw @ lxw
-        fdydw = diffmatw @ lyw
+        fdxdu = uAxis.derivative( lxu )
+        fdydu = uAxis.derivative( lyu )
+        fdxdv = vAxis.derivative( lxv )
+        fdydv = vAxis.derivative( lyv )
+        fdxdw = wAxis.derivative( lxw )
+        fdydw = wAxis.derivative( lyw )
 
 
         # precalculate coordinates and derivatives for w outside loop for speedup
-        baryw.set_yi(lxw)
-        txwa = baryw(w_values)
-        baryw.set_yi(lyw)
-        tywa = baryw(w_values)
-        baryw.set_yi(fdxdw)
-        dxdwa = baryw(w_values)
-        baryw.set_yi(fdydw)
-        dydwa = baryw(w_values)
+        wAxis.bary.set_yi(lxw)
+        txwa = wAxis.bary(w_values)
+
+        wAxis.bary.set_yi(lyw)
+        tywa = wAxis.bary(w_values)
+
+        wAxis.bary.set_yi(fdxdw)
+        dxdwa = wAxis.bary(w_values)
+
+        wAxis.bary.set_yi(fdydw)
+        dydwa = wAxis.bary(w_values)
 
 
-        for iu, u in enumerate(unodes):
+
+
+        for iu, u in enumerate(uAxis.nodes):
             txu = lxu[iu]
             tyu = lyu[iu]
             dxdu = fdxdu[iu]
             dydu = fdydu[iu]
 
-            for iv, v in enumerate(vnodes):
+            for iv, v in enumerate(vAxis.nodes):
                 txv = lxv[iv]
                 tyv = lyv[iv]
                 dxdv = fdxdv[iv]
@@ -668,11 +715,14 @@ def Nomogen( func, main_params ):
                 ty = tyu - tyv
                 td2 = tx * tx + ty * ty
                 td = math.sqrt(td2)
+                # e0 is the alignment error
                 e0 = (tx * (tyu - tyw) - (txu - txw) * ty) / td  # [d]
+
                 if td2 * resolution > 1:
                     eAcc += e0*e0                                # [d^2]
 
-                tmp = ty * dxdw - tx * dydw                      # [xy]/[w]
+                # now determine the slope errors for the u & v axes
+                tmp = dxdw * ty - tx * dydw                      # [xy]/[w]
                 tuc = e0 * (tx * dxdu + ty * dydu) / td2         # [d]/[u]
                 tvc = e0 * (tx * dxdv + ty * dydv) / td2         # [d]/[v]
 
@@ -687,15 +737,15 @@ def Nomogen( func, main_params ):
                              """.format(s,t) )
 
                 if math.isnan(dwdu):
-                    quitOnNan(params_u['title'], u_user(u))
-                dedu = ((dwdu * tmp + (tyv - tyw) * dxdu - (txv - txw) * dydu)) / td - tuc  # [d]/[u] - [d]/[u]
+                    quitOnNan(uAxis.title, uAxis.user(u))
+                dedu = ((dwdu * tmp + dxdu * (tyv - tyw) - (txv - txw) * dydu)) / td - tuc  # [d]/[u] - [d]/[u]
                 eDeru += dedu ** 2         # [d^2]/[u^2]
 
 
                 dwdv = dwdv_values[iu][iv]
                 if math.isnan(dwdv):
-                    quitOnNan(params_v['title'], v_user(v))
-                dedv = ((dwdv * tmp + (tyw - tyu) * dxdv - (txw - txu) * dydv)) / td + tvc  # [d]/[v] + [d]/[v]
+                    quitOnNan(vAxis.title, vAxis.user(v))
+                dedv = ((dwdv * tmp + dxdv * (tyw - tyu) - (txw - txu) * dydv)) / td + tvc  # [d]/[v] + [d]/[v]
                 eDerv += dedv ** 2
 
 
@@ -703,13 +753,13 @@ def Nomogen( func, main_params ):
                 check = False
                 if check:
                     def gete0(au, av):
-                        xau = evaluate(au, unodes, lxu)
-                        yau = evaluate(au, unodes, lyu)
-                        xav = evaluate(av, vnodes, lxv)
-                        yav = evaluate(av, vnodes, lyv)
+                        xau = uAxis(au, lxu)
+                        yau = uAxis(au, lyu)
+                        xav = vAxis(av, lxv)
+                        yav = vAxis(av, lyv)
                         tw = w(au, av)
-                        xtw = evaluate(tw, wnodes, lxw)
-                        ytw = evaluate(tw, wnodes, lyw)
+                        xtw = wAxis(tw, lxw)
+                        ytw = wAxis(tw, lyw)
                         return (xau * yav + xtw * (yau - yav) + (xav - xau) * ytw - xav * yau) \
                             / math.hypot((xau - xav), (yau - yav))
 
@@ -717,33 +767,43 @@ def Nomogen( func, main_params ):
                         sys.exit("gete0() error")
 
                     aa = v
-                    tu = derivative( lambda uu: gete0(uu, aa), u, umax, umin )
+                    tu = derivative( lambda uu: gete0(uu, aa), u, uAxis.max, uAxis.min )
                     if not math.isclose(tu, dedu, rel_tol=1e-05, abs_tol=1e-7):
                         print("(u,v) is (", u, ",", v, "), \
                         dedu is ", dedu, ", tu is ", tu, ", tuc is ", tuc)
                         sys.exit("dedu error")
 
                     aa = u
-                    tv = derivative( lambda vv: gete0(aa, vv), v, vmax, vmin )
+                    tv = derivative( lambda vv: gete0(aa, vv), v, vAxis.max, vAxis.min )
                     if not math.isclose(tv, dedv, rel_tol=1e-05, abs_tol=1e-7):
                         print("(u,v) is (", u, ",", v, "), dedv is ", dedv, ", tv is ", tv)
                         sys.exit("dedv error")
 
 
-                # calculate cost of shape
-                # include cost of position
-                # u & v axes
-                # divide by range of u to make eShape independent of u units, etc
-                # multiply y coords by aspect ratio
+                # calculate cost of shape/measurability
+                # including cost of position
+                # u, v & w axes
+                # use relative (%) error ie du/u
                 if muShape != 0:
-                    a = height/width         # aspect ratio  y:x
-                    a2 = a*a
-                    t = 0.01*(umax-umin)*(umax-umin) + u*u
-                    uShape = (dxdu*ty - dydu*tx)**2 * t   # [x^2 y^2 / u^2] * [u^2]
-                    t = 0.01*(vmax-vmin)*(vmax-vmin) + v*v
-                    vShape = (dxdv*ty - dydv*tx)**2 * t   # [x^2 y^2 / u^2] * [u^2]
-                    t = tx * tx + ty * ty * a2
-                    tShape = t * ( 1/uShape + 1/vShape) / a2         # 1/[d^2]
+                    # multiply x & y coords by width & height so
+                    # error is in paper units (mm), not parts of the unit square
+
+                    # this is a factor to normalise the u variable
+                    # divide by range of u to make eShape independent of u units
+                    # to prevent division by zero, clip at 1% of total range
+                    t = max( 0.01*(uAxis.max-uAxis.min)**2, u*u )  # [u^2]
+                    xiu = (dxdu*ty - dydu*tx) * height * width     # [x y/u]
+                    uShape = 1/(t*xiu**2)    # 1/([u^2] * [x^2 y^2 / u^2])
+
+                    t = max( 0.01*(vAxis.max-vAxis.min)**2, v*v )
+                    xiv = (dxdv*ty - dydv*tx) * height * width  # [x y / v]
+                    vShape = 1/(t*xiv**2)   # 1/([v^2] [x^2 y^2 / v^2])
+
+                    t = max( 0.01*(wAxis.max-wAxis.min)**2, w(u,v)**2 )
+                    wShape = (t/(dwdu*xiu + dwdv*xiv))**2  # [w^2] / [w^2 x^2 y^2]
+
+                    t = (tx * width)**2 + (ty * height)**2    # [d^2]
+                    tShape = t * (uShape + vShape + wShape)   # [d^2]/[x^2 y^2]
 
                     tShape *= cost_pos_u[iu] + cost_pos_v[iv]
                     eShape += tShape
@@ -751,25 +811,24 @@ def Nomogen( func, main_params ):
         # make eDeru independent of the scale of u,
         # so multiply by range of u to cancel units
         # eDeru has units (xy/u)**2
-        eDeru *= (umax - umin) ** 2                      # [d^2]
-        eDerv *= (vmax - vmin) ** 2                      # [d^2]
+        # TODO: is there a better scaling factor?
+        eDeru *= (uAxis.max - uAxis.min) ** 2                      # [d^2]
+        eDerv *= (vAxis.max - vAxis.min) ** 2                      # [d^2]
 
         # muShape has units [d^4] so we can add
         # the shape error to the other errors.
         eShape *= muShape
 
-        # mu sets relative priority of eAcc & eDerx
-        # TODO:
-        #       investigate a good value for mu
-        #
         # there is one error term for each pair of points
         # so normalise to average error per point pair.
-        mu = 1 #XXX
         global cur_cost
-        cur_cost = (eAcc + mu * (eDeru + eDerv) + eShape) / (len(unodes) * len(vnodes))
+        cur_cost = (eAcc + eDeru + eDerv + eShape) / (len(uAxis.nodes) * len(vAxis.nodes))
         return cur_cost
 
 
+
+    global itNr
+    itNr = 0
 
 
     #################################################
@@ -780,6 +839,7 @@ def Nomogen( func, main_params ):
     def calc_jac( dummy ):
         '''
         Analytically calculate the jacobian of calc_cost() above
+        still a work in progress
         '''
 
         ## not yet complete, unused code ##
@@ -799,23 +859,23 @@ def Nomogen( func, main_params ):
         # share these with calc_cost()
 
         # precaclulate derivative functions
-        fdxdu = diffmatu @ lxu
-        fdydu = diffmatu @ lyu
-        fdxdv = diffmatv @ lxv
-        fdydv = diffmatv @ lyv
-        fdxdw = diffmatw @ lxw
-        fdydw = diffmatw @ lyw
+        fdxdu = uAxis.derivative( lxu )
+        fdydu = uAxis.derivative( lyu )
+        fdxdv = vAxis.derivative( lxv )
+        fdydv = vAxis.derivative( lyv )
+        fdxdw = wAxis.derivative( lxw )
+        fdydw = wAxis.derivative( lyw )
 
 
         # precalculate coordinates and derivatives for w outside loop for speedup
-        baryw.set_yi(lxw)
-        txwa = baryw(w_values)
-        baryw.set_yi(lyw)
-        tywa = baryw(w_values)
-        baryw.set_yi(fdxdw)
-        dxdwa = baryw(w_values)
-        baryw.set_yi(fdydw)
-        dydwa = baryw(w_values)
+        wAxis.bary.set_yi(lxw)
+        txwa = wAxis.bary(w_values)
+        wAxis.bary.set_yi(lyw)
+        tywa = wAxis.bary(w_values)
+        wAxis.bary.set_yi(fdxdw)
+        dxdwa = wAxis.bary(w_values)
+        wAxis.bary.set_yi(fdydw)
+        dydwa = wAxis.bary(w_values)
 
 
         jac = np.zeros( len(dummy) )
@@ -830,12 +890,12 @@ def Nomogen( func, main_params ):
             dxdu = fdxdu[iu]
             dydu = fdydu[iu]
 
-            u = unodes[iu]
+            u = uAxis.nodes[iu]
 
             derrxui = derryui = 0   # derivative of error for xu[i]
 
 
-            for iv, v in enumerate(vnodes):
+            for iv, v in enumerate(vAxis.nodes):
                 txv = lxv[iv]
                 tyv = lyv[iv]
                 dxdv = fdxdv[iv]
@@ -878,7 +938,7 @@ def Nomogen( func, main_params ):
                     sys.exit( """
 error: the {} scale line around the region u = {} cannot be represented by a finite polynomial!
        please reduce limits on this scale and try again
-                                 """.format(params_u['title'], u_user(u)) )
+                                 """.format(uAxis.title, uAxis.user(u)) )
 
                     dwdv = dwdv_values[iu][iv]
                     if not math.isnan(dwdv):
@@ -888,7 +948,7 @@ error: the {} scale line around the region u = {} cannot be represented by a fin
                         sys.exit( """
 error: the {} scale line around the region v = {} cannot be represented by a finite polynomial!
        try again with reduced limits on this scale
-                                 """.format(params_v['title'], v_user(v)) )
+                                 """.format(vAxis.title, vAxis.user(v)) )
 
 
                     # calculate cost of shape
@@ -896,9 +956,9 @@ error: the {} scale line around the region v = {} cannot be represented by a fin
                     # u & v axes
                     # divide by range of u to make eShape independent of u units, etc
                     if muShape != 0:
-                        t = 0.01*(umax-umin)*(umax-umin) + u*u
+                        t = 0.01*(uAxis.max-uAxis.min)*(uAxis.max-uAxis.min) + u*u
                         uShape = ((dxdu*ty - dydu*tx))**2 * t   # [x^2 y^2 / u^2] * [u^2]
-                        t = 0.01*(vmax-vmin)*(vmax-vmin) + v*v
+                        t = 0.01*(vAxis.max-vAxis.min)*(vAxis.max-vAxis.min) + v*v
                         vShape = ((dxdv*ty - dydv*tx))**2 * t
                         tShape = td2 * ( 1/uShape + 1/vShape)         # 1/[d^2]
 
@@ -918,12 +978,12 @@ error: the {} scale line around the region v = {} cannot be represented by a fin
                 dxdv = fdxdv[iv]
                 dydv = fdydv[iv]
 
-                v = vnodes[iv]
+                v = vAxis.nodes[iv]
 
                 derrxvi = derryvi = 0   # derivative of error for xv[i]
 
 
-                for iu, u in enumerate(unodes):
+                for iu, u in enumerate(uAxis.nodes):
                     txu = lxu[iu]
                     tyu = lyu[iu]
                     dxdu = fdxdu[iu]
@@ -966,7 +1026,7 @@ error: the {} scale line around the region v = {} cannot be represented by a fin
                         sys.exit( """
 error: the {} scale line around the region u = {} cannot be represented by a finite polynomial!
        please reduce limits on this scale and try again
-                                 """.format(params_u['title'], u_user(u)) )
+                                 """.format(uAxis.title, uAxis.user(u)) )
 
                     dwdv = dwdv_values[iu][iv]
                     if not math.isnan(dwdv):
@@ -976,7 +1036,7 @@ error: the {} scale line around the region u = {} cannot be represented by a fin
                         sys.exit( """
 error: the {} scale line around the region v = {} cannot be represented by a finite polynomial!
        try again with reduced limits on this scale
-                                 """.format(params_v['title'], v_user(v)) )
+                                 """.format(vAxis.title, vAxis.user(v)) )
 
 
             # calculate cost of shape
@@ -984,9 +1044,9 @@ error: the {} scale line around the region v = {} cannot be represented by a fin
             # u & v axes
             # divide by range of u to make eShape independent of u units, etc
             if muShape != 0:
-                t = 0.01*(umax-umin)*(umax-umin) + u*u
+                t = 0.01*(uAxis.max-uAxis.min)*(uAxis.max-uAxis.min) + u*u
                 uShape = ((dxdu*ty - dydu*tx))**2 * t   # [x^2 y^2 / u^2] * [u^2]
-                t = 0.01*(vmax-vmin)*(vmax-vmin) + v*v
+                t = 0.01*(vAxis.max-vAxis.min)*(vAxis.max-vAxis.min) + v*v
                 vShape = ((dxdv*ty - dydv*tx))**2 * t
                 tShape = td2 * ( 1/uShape + 1/vShape)         # 1/[d^2]
 
@@ -1002,11 +1062,11 @@ error: the {} scale line around the region v = {} cannot be represented by a fin
         jacxwk = jxw0; jacywk = jyw0
         for kw in range(len(lxw)):  # xxx
             derrxwk = derrywk = 0   # jacobian of error for xw[k], yw[k]
-            twk = wnodes[kw]
+            twk = wAxis.nodes[kw]
             alphak = 1
-            for kk in range(len(wnodes)):  # xxx
+            for kk in range(len(wAxis.nodes)):  # xxx
                 if kk != kw:
-                    alphak = alphak*(twk - wnodes[kk])
+                    alphak = alphak*(twk - wAxis.nodes[kk])
 
 
         for iu in range(len(lxu)):  # xxx
@@ -1030,9 +1090,9 @@ error: the {} scale line around the region v = {} cannot be represented by a fin
                 tw = w_values[iu][jv]  # tw = w(u,v)
 
                 dwk = 1/alphak
-                for kk in range(len(wnodes)):
+                for kk in range(len(wAxis.nodes)):
                     if kk != kw:
-                        dwk = dwk*(tw - wnodes[kk])
+                        dwk = dwk*(tw - wAxis.nodes[kk])
                 # dwk = d(coord at w) / d(cooord wk)
 
                 ############## test code ###############################
@@ -1041,34 +1101,34 @@ error: the {} scale line around the region v = {} cannot be represented by a fin
                 if check:
 
                     # deltaj[j] = (-1)**j * (0.5 if j in [0, last] else 1)
-                    deltaj = np.ones(len(wnodes))
+                    deltaj = np.ones(len(wAxis.nodes))
                     deltaj[1::2] = -1
                     deltaj[0] = 0.5;         deltaj[-1] *= 0.5
                     #print( 'deltaj is ', deltaj )
                     if tw == twk:
                         dwk1 = 1
-                    elif tw in wnodes:
+                    elif tw in wAxis.nodes:
                         dwk1 = 0
                     else:
                         B=0
-                        for kk in range(len(wnodes)):  # xxx
-                            B = B + deltaj[kk]/(tw - wnodes[kk])
+                        for kk in range(len(wAxis.nodes)):  # xxx
+                            B = B + deltaj[kk]/(tw - wAxis.nodes[kk])
                         dwk1 = (deltaj[kw]/(tw - twk))/B
                     # dwk1 = d(coord at w) / d(cooord wk)
 
 
-                    A = 1
+                    A = 1; h=sqrt_eps
                     tw = tw*(1+h)
-                    for kk in range(len(wnodes)):  # xxx
+                    for kk in range(len(wAxis.nodes)):  # xxx
                         if kk != kw:
-                            A = A*(tw - wnodes[kk])
+                            A = A*(tw - wAxis.nodes[kk])
                     #print( 'dwk is ', dwk, 'dwk1 is ', dwk1, ', test is ', A/alphak )
 
                     t = lxw[kw]
                     lxw[kw] = t+h
-                    xwwt1 = evaluate(tw, wnodes, lxw)
+                    xwwt1 = wAxis(tw, lxw)
                     lxw[kw] = t-h
-                    xwwt0 = evaluate(tw, wnodes, lxw)
+                    xwwt0 = wAxis(tw, lxw)
                     lxw[kw] = t
                     dddd = (xwwt1 - xwwt0) / (2*h)
 
@@ -1093,14 +1153,14 @@ error: the {} scale line around the region v = {} cannot be represented by a fin
                 derrxwk += tderr
 
                 tderr = 2*tA*dwk*(txv - txu) / td2     # no y term for first & last node
-                if kw not in [0, len(wnodes)-1] :
+                if kw not in [0, len(wAxis.nodes)-1] :
                     derrywk += tderr
 
 
         jac[jacxwk] = derrxwk; jacxwk += 1
 
         # first & last y nodes are fixed at 0 & 1, so they have no jacobian term
-        if kw not in [0, len(wnodes)-1] :
+        if kw not in [0, len(wAxis.nodes)-1] :
             jac[jacywk] = derrywk; jacywk += 1
 
 
@@ -1108,13 +1168,13 @@ error: the {} scale line around the region v = {} cannot be represented by a fin
         # make eDeru independent of the scale of u,
         # so multiply by range of u to cancel units
         # eDeru has units (xy/u)**2
-        teDeru *= (umax - umin) ** 2                      # [d^2]
-        teDerv *= (vmax - vmin) ** 2                      # [d^2]
+        teDeru *= (uAxis.max - uAxis.min) ** 2                      # [d^2]
+        teDerv *= (vAxis.max - vAxis.min) ** 2                      # [d^2]
 
         #eShape *= muShape
 
 
-        return jac / (len(unodes) * len(vnodes))
+        return jac / (len(uAxis.nodes) * len(vAxis.nodes))
 
 
 
@@ -1257,23 +1317,23 @@ error: the {} scale line around the region v = {} cannot be represented by a fin
 
 
         # check derivatives at each node pair...
-        fdxdu = diffmatu @ xu
-        fdydu = diffmatu @ yu
-        fdxdv = diffmatv @ xv
-        fdydv = diffmatv @ yv
-        fdxdw = diffmatw @ xw
-        fdydw = diffmatw @ yw
+        fdxdu = uAxis.derivative( xu )
+        fdydu = uAxis.derivative( yu )
+        fdxdv = vAxis.derivative( xv )
+        fdydv = vAxis.derivative( yv )
+        fdxdw = wAxis.derivative( xw )
+        fdydw = wAxis.derivative( yw )
 
         maxerr = 0
 
-        baryw.set_yi(fdxdw)
-        dxdwa = baryw(w_values)
-        baryw.set_yi(fdydw)
-        dydwa = baryw(w_values)
-        baryw.set_yi(xw)
-        xwcoorda = baryw(w_values)
-        baryw.set_yi(yw)
-        ywcoorda = baryw(w_values)
+        wAxis.bary.set_yi(fdxdw)
+        dxdwa = wAxis.bary(w_values)
+        wAxis.bary.set_yi(fdydw)
+        dydwa = wAxis.bary(w_values)
+        wAxis.bary.set_yi(xw)
+        xwcoorda = wAxis.bary(w_values)
+        wAxis.bary.set_yi(yw)
+        ywcoorda = wAxis.bary(w_values)
 
         for i, (xucoord, yucoord, dxdu, dydu) in enumerate( zip(xu, yu, fdxdu, fdydu) ):
 
@@ -1288,17 +1348,17 @@ error: the {} scale line around the region v = {} cannot be represented by a fin
                 dwdv = dwdv_values[i][j]
                 lhs = dwdu * ((xucoord - xvcoord) * dydw - (yucoord - yvcoord) * dxdw)
                 rhs = (xwcoord - xvcoord) * dydu - (ywcoord - yvcoord) * dxdu
-                t = abs(lhs - rhs)*(umax-umin)
+                t = abs(lhs - rhs)*(uAxis.max-uAxis.min)
                 maxerr = max(maxerr, t)
 
                 lhs = dwdv * ((xucoord - xvcoord) * dydw - (yucoord - yvcoord) * dxdw)
                 rhs = (xucoord - xwcoord) * dydv - (yucoord - ywcoord) * dxdv
-                t = abs(lhs - rhs)*(vmax-vmin)
+                t = abs(lhs - rhs)*(vAxis.max-vAxis.min)
                 maxerr = max(maxerr, t)
 
                 lhs = dwdv * ((xwcoord - xvcoord) * dydu - (ywcoord - yvcoord) * dxdu)
                 rhs = dwdu * ((xucoord - xwcoord) * dydv - (yucoord - ywcoord) * dxdv)
-                t = abs(lhs - rhs)*(umax-umin)*(vmax-vmin)/(wmax-wmin)
+                t = abs(lhs - rhs)*(uAxis.max-uAxis.min)*(vAxis.max-vAxis.min)/(wAxis.max-wAxis.min)
                 maxerr = max(maxerr, t)
         print("max derivative error is {:.2g}".format(maxerr))
 
@@ -1313,49 +1373,44 @@ error: the {} scale line around the region v = {} cannot be represented by a fin
         print("checking solution every ", d, "mm, ")
         ds = d / hmm  # step size as fraction of the unit square
 
-        baryfdxdu = scipy.interpolate.BarycentricInterpolator(unodes, fdxdu)
-        baryfdydu = scipy.interpolate.BarycentricInterpolator(unodes, fdydu)
         upoints = []
-        u = umin
-        while u <= umax:
-            #print("u is ", u, 100*(u-umin)/(umax-umin), "%")
+        u = uAxis.min
+        while u <= uAxis.max:
+            #print("u is ", u, 100*(u-uAxis.min)/(uAxis.max-uAxis.min), "%")
             upoints.append(u)
-            dx = baryfdxdu( u )
-            dy = baryfdydu( u )
+            dx = uAxis( u, fdxdu )
+            dy = uAxis( u, fdydu )
             # next u:
             dd = ds / math.hypot(dx, dy)
-            if umax-dd < u < umax:
-                u = umax
+            if uAxis.max-dd < u < uAxis.max:
+                u = uAxis.max
             else:
                 u = u+dd
 
-
-        baryfdxdv = scipy.interpolate.BarycentricInterpolator(vnodes, fdxdv)
-        baryfdydv = scipy.interpolate.BarycentricInterpolator(vnodes, fdydv)
         vpoints = []
-        v = vmin
-        while v <= vmax:
-            #print("v is ", v, 100*(v-vmin)/(vmax-vmin), "%")
+        v = vAxis.min
+        while v <= vAxis.max:
+            #print("v is ", v, 100*(v-vAxis.min)/(vAxis.max-vAxis.min), "%")
             vpoints.append(v)
-            dx = baryfdxdv( v )
-            dy = baryfdydv( v )
+            dx = vAxis(v, fdxdv )
+            dy = vAxis(v, fdydv )
             # next v:
             dd = ds / math.hypot(dx, dy)
-            if vmax - dd < v < vmax:
-                v = vmax
+            if vAxis.max - dd < v < vAxis.max:
+                v = vAxis.max
             else:
                 v = v+dd
 
 
-        baryu.set_yi(xu)
-        xucoorda = baryu(upoints)
-        baryu.set_yi(yu)
-        yucoorda = baryu(upoints)
+        uAxis.bary.set_yi(xu)
+        xucoorda = uAxis.bary(upoints)
+        uAxis.bary.set_yi(yu)
+        yucoorda = uAxis.bary(upoints)
 
-        baryv.set_yi(xv)
-        xvcoorda = baryv(vpoints)
-        baryv.set_yi(yv)
-        yvcoorda = baryv(vpoints)
+        vAxis.bary.set_yi(xv)
+        xvcoorda = vAxis.bary(vpoints)
+        vAxis.bary.set_yi(yv)
+        yvcoorda = vAxis.bary(vpoints)
 
         logAlignmentErrors = 'LogAlignment' in main_params['block_params'][0] \
             and main_params['block_params'][0]['LogAlignment']
@@ -1373,7 +1428,7 @@ error: the {} scale line around the region v = {} cannot be represented by a fin
                 logFile.write( '# generated by nomogen {} \n'.
                                format( datetime.datetime.now().strftime('%a %d %b %Y %H:%M:%S'), ))
                 logFile.write( "nomo_id = {{ 'file':'{}', 'title': '{}', 'paper_height': {}, 'paper_width':{} }}\n". \
-                               format( main_params['filename'], params_w['title'],
+                               format( main_params['filename'], wAxis.title,  # ???
                                        main_params['paper_height'],
                                        main_params['paper_width'], ) )
                 logFile.write( 'Nomo_error = [\n')
@@ -1382,38 +1437,38 @@ error: the {} scale line around the region v = {} cannot be represented by a fin
         for u, xucoord, yucoord in zip( upoints, xucoorda, yucoorda ):
             for v, xvcoord, yvcoord in zip( vpoints, xvcoorda, yvcoorda ):
                 def report_alignment(difference, xwcoord, ywcoord):
-                    print("u is ", u_user(u), " at pos (", xucoord, ",", yucoord, ")")
-                    print("v is ", v_user(v), " at pos (", xvcoord, ",", yvcoord, ")")
-                    print("w is ", w_user(wvalue), " at pos (", xwcoord, ",", ywcoord, ")")
+                    print("u is ", uAxis.user(u), " at pos (", xucoord, ",", yucoord, ")")
+                    print("v is ", vAxis.user(v), " at pos (", xvcoord, ",", yvcoord, ")")
+                    print("w is ", wAxis.user(wvalue), " at pos (", xwcoord, ",", ywcoord, ")")
                     print( "alignment difference is {:5.2g} about {:5.2f} mm".format(difference, difference * hmm) )
 
                 wvalue = w(u, v)
-                if params_w['u_min'] < w_user(wvalue) < params_w['u_max']:
-                    xwcoord = evaluate(wvalue, wnodes, xw)
-                    ywcoord = evaluate(wvalue, wnodes, yw)
+                if wAxis.params['u_min'] < wAxis.user(wvalue) < wAxis.params['u_max']:
+                    xwcoord = wAxis(wvalue, xw)
+                    ywcoord = wAxis(wvalue, yw)
                     difference = ((xucoord - xvcoord) * (yucoord - ywcoord) -
                                   (xucoord - xwcoord) * (yucoord - yvcoord)) / \
                                   math.hypot(xucoord - xvcoord, xvcoord - yvcoord)
 
                     if logAlignmentErrors:
                         logFile.write( "{{'w': {}, 'error': {}, 'u': {}, 'v': {}}},\n".
-                                       format(w_user(wvalue), hmm*difference, u, v) )
+                                       format(wAxis.user(wvalue), hmm*difference, u, v) )
 
                     difference = abs(difference)
-                    if wvalue < wmin and not math.isclose(wvalue, wmin, rel_tol=0.01):
+                    if wvalue < wAxis.min and not math.isclose(wvalue, wAxis.min, rel_tol=0.01):
                         report_alignment(difference, xwcoord, ywcoord)
                         print( "scale range error, please check w scale min limits",
-                               "\nw({:g}, {:g}) = {:g} < wmin, {:g}".
-                               format(u_user(u), v_user(v), w_user(wvalue), wmin_user))
+                               "\nw({:g}, {:g}) = {:g} < wAxis.min, {:g}".
+                               format(uAxis.user(u), vAxis.user(v), wAxis.user(wvalue), wAxis.min_user))
                         #sys.exit("scale range error, please check w scale min limits"
-                            #     "\nw({:g}, {:g}) = {} < wmin, {}".format(u, v, wvalue, wmin))
-                    elif wvalue > wmax and not math.isclose(wvalue, wmax, rel_tol=0.01):
+                            #     "\nw({:g}, {:g}) = {} < wAxis.min, {}".format(u, v, wvalue, wAxis.min))
+                    elif wvalue > wAxis.max and not math.isclose(wvalue, wAxis.max, rel_tol=0.01):
                         report_alignment(difference, xwcoord, ywcoord)
                         print("scale range error, please check w scale max limits",
-                              "\nw({:g}, {:g}) = {:g} > wmax, {:g}".
-                              format(u_user(u), v_user(v), w_user(wvalue), wmax_user))
+                              "\nw({:g}, {:g}) = {:g} > wAxis.max, {:g}".
+                              format(uAxis.user(u), vAxis.user(v), wAxis.user(wvalue), wAxis.max_user))
                         #sys.exit("scale range error, please check w scale max limits"
-                        #         "\nw({:g}, {:g}) = {} > wmax, {}".format(u, v, wvalue, wmax))
+                        #         "\nw({:g}, {:g}) = {} > wAxis.max, {}".format(u, v, wvalue, wAxis.max))
 
                     if difference > maxdiff:
                         maxdiff = difference
@@ -1433,18 +1488,18 @@ error: the {} scale line around the region v = {} cannot be represented by a fin
             print("Try increasing this, or reduce the range of one or more scales")
 
         # return the resulting axes into the nomogram parameters
-        params_u.update({'f': lambda u: evaluate(u_plot(u), unodes, xu),
-                         'g': lambda u: evaluate(u_plot(u), unodes, yu),
-                         'h': lambda u: 1.0,
-                         })
-        params_v.update({'f': lambda v: evaluate(v_plot(v), vnodes, xv),
-                         'g': lambda v: evaluate(v_plot(v), vnodes, yv),
-                         'h': lambda v: 1.0,
-                         })
-        params_w.update({'f': lambda w: evaluate(w_plot(w), wnodes, xw),
-                         'g': lambda w: evaluate(w_plot(w), wnodes, yw),
-                         'h': lambda w: 1.0,
-                         })
+        uAxis.params.update({'f': lambda u: uAxis(uAxis.plot(u), xu),
+                             'g': lambda u: uAxis(uAxis.plot(u), yu),
+                             'h': lambda u: 1.0,
+                             })
+        vAxis.params.update({'f': lambda v: vAxis(vAxis.plot(v), xv),
+                             'g': lambda v: vAxis(vAxis.plot(v), yv),
+                             'h': lambda v: 1.0,
+                             })
+        wAxis.params.update({'f': lambda w: wAxis(wAxis.plot(w), xw),
+                             'g': lambda w: wAxis(wAxis.plot(w), yw),
+                             'h': lambda w: 1.0,
+                             })
 
         # get & print footer info
         if 'footer_string' in main_params:
@@ -1497,7 +1552,8 @@ error: the {} scale line around the region v = {} cannot be represented by a fin
         # unless the user has already specified a preference ...
 
         # account for scales increasing downwards
-        if (yw[0] > yw[-1]) != (w_plot(wmin_user) > w_plot(wmax_user)):
+        #print( f'wAxis.min_user is {wAxis.min_user}, wAxis.max_user is {wAxis.max_user}, wAxis.plot(wAxis.max_user)is {wAxis.plot(wAxis.max_user)}' )
+        if (yw[0] > yw[-1]) != (wAxis.plot(wAxis.min_user) > wAxis.plot(wAxis.max_user)):
             txw = xw[::-1]
             wEast = 'left'
             wWest = 'right'
@@ -1506,14 +1562,14 @@ error: the {} scale line around the region v = {} cannot be represented by a fin
             wEast = 'right'
             wWest = 'left'
 
-        if (yv[0] > yv[-1]) != (v_plot(vmin_user) > v_plot(vmax_user)):
+        if (yv[0] > yv[-1]) != (vAxis.plot(vAxis.min_user) > vAxis.plot(vAxis.max_user)):
             txv = xv[::-1]
             vEast = 'left'
         else:
             txv = xv
             vEast = 'right'
 
-        if u_plot(umin_user) > u_plot(umax_user):
+        if uAxis.plot(uAxis.min_user) > uAxis.plot(uAxis.max_user):
             #print( 'u scale increases downward' )
             txu = xu[::-1]
             uWest = 'right'
@@ -1527,37 +1583,37 @@ error: the {} scale line around the region v = {} cannot be represented by a fin
         distvw = txv - txw
         #print( 'distance u..w is {}, distance v..w is {}'.format(distuw, distvw) )
 
-        if ('tick_side' not in params_u) and (np.min(distuw) < 0.2):
+        if ('tick_side' not in uAxis.params) and (np.min(distuw) < 0.2):
             print( 'putting u scale ticks on {} side'.format(uWest) )
-            params_u.update({'tick_side': uWest})
-            params_u.update({'turn_relative': True})
+            uAxis.params.update({'tick_side': uWest})
+            uAxis.params.update({'turn_relative': True})
 
-        if ('tick_side' not in params_v) and (np.min(distvw) < 0.2):
+        if ('tick_side' not in vAxis.params) and (np.min(distvw) < 0.2):
             print( 'putting v scale ticks on {} side'.format(vEast) )
-            params_v.update({'tick_side': vEast})
-            params_v.update({'turn_relative': True})
+            vAxis.params.update({'tick_side': vEast})
+            vAxis.params.update({'turn_relative': True})
 
 
         #print( 'vw norm is ', np.linalg.norm(xv - xw), ', uw norm is ', np.linalg.norm(xw - xu) )
-        if not 'tick_side' in params_w:
+        if not 'tick_side' in wAxis.params:
             if np.min(distuw) < 0.2:
-                params_w.update({'tick_side': wEast})
+                wAxis.params.update({'tick_side': wEast})
             elif np.min(distvw) < 0.2:
-                params_w.update({'tick_side': wWest})
+                wAxis.params.update({'tick_side': wWest})
             elif np.linalg.norm(distuw) > np.linalg.norm(distvw):
                 # the w scale line is closer to the v scale line
-                params_w.update({'tick_side': wWest})
+                wAxis.params.update({'tick_side': wWest})
             else:
                 # the w scale line is closer to the u scale line
-                params_w.update({'tick_side': wEast})
-            params_w.update({'turn_relative': True})
-            print( 'putting w scale ticks on {} side'.format(params_w['tick_side']) )
+                wAxis.params.update({'tick_side': wEast})
+            wAxis.params.update({'turn_relative': True})
+            print( 'putting w scale ticks on {} side'.format(wAxis.params['tick_side']) )
 
 
         ########################################################
         #
         # check for dual scales
-        # the first block holds the type_9 axes, (params_u, etc)
+        # the first block holds the type_9 axes, (uAxis.params, etc)
         # then type_8 or maybe type_9 blocks follow with the dual scales
 
         ## TODO:
@@ -1565,7 +1621,7 @@ error: the {} scale line around the region v = {} cannot be represented by a fin
         # in a future version, more than a single equation might be allowed,
         # so the blocks should be analysed before the scales are calculated
 
-        for params in [params_u, params_v, params_w]:
+        for params in [uAxis.params, vAxis.params, wAxis.params]:
             if 'tag' in params:
                 # look for a matching tag
                 # check and copy the newly calculated functions across

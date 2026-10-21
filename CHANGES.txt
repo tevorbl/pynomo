@@ -7,8 +7,11 @@ documents updated
 
 nomogen update:
 
+   - make axis code into a separate class
+
    - anamorphosis added to nomogen
-      this prescales the axis function to improve axis scale generation.
+     this prescales the axis function to improve axis scale generation.
+     implemented as 'prescale' item on axis dictionary
 
    - show progress bar, if tracing enabled show convergence data
 
@@ -22,6 +25,10 @@ nomogen update:
 
    - fixed bug where in multiple calls to nomogen, the footer string
       overwrites the existing footer
+
+   - shape optimisation now works on all 3 axes, not just the outer two
+     also cost depends on which of the paper's edges is closest to the nodes
+     on the axes
 
    - numerous minor edits:
      mods after pylint hints

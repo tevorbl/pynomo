@@ -6,17 +6,15 @@
     v & w axis up/down
     linear/log scales
     symetrical/non-symetrical cases
-
- usage:
-
-      axestest n
-      where n is an integer denoting a test number
+    preScale on each axis
 
 '''
 
 # pylint: disable=C
 
 import sys
+import math
+
 from pprint import  pprint
 
 sys.path.insert(0, "..")
@@ -37,13 +35,10 @@ vmax = 5
 def do_test( name_template ):
     ''' simple axes tests for each test case ... '''
 
-#    global scale_type
+    NN = 3        # default nr Chebyshev nodes
 
-    test_nr = 0
-    while True:  # for test_nr in range(1,17):
+    for test_nr in range(1,17):
         test_nr += 1
-
-        NN = 3        # default nr Chebyshev nodes
 
         if test_nr == 1:
             w = lambda u,v: u+v
@@ -56,7 +51,7 @@ def do_test( name_template ):
         elif test_nr == 3:
             w = lambda u, v: -(u + v)
             scale_type = 'linear smart'
-            title_str = r'$w = -(v + u)$'
+            title_str = r'$w = -(u + v)$'
         elif test_nr == 4:
             w = lambda u, v: v - u
             scale_type = 'linear smart'
@@ -65,30 +60,26 @@ def do_test( name_template ):
             w = lambda u, v: u*v
             scale_type = 'log smart'
             title_str = r'$w = uv$'
-            if name_template[-1] =='c': NN = 16
         elif test_nr == 6:
             w = lambda u, v: u / v
             scale_type = 'log smart'
             title_str = r'$w = {u \over v}$'
-            if name_template[-1] =='c': NN = 16
         elif test_nr == 7:
             w = lambda u, v: 1 / (u*v)
             scale_type = 'log smart'
             title_str = r'$w = {1 \over {uv}}$'
-            if name_template[-1] =='c': NN = 16
         elif test_nr == 8:
             w = lambda u, v: v / u
             scale_type = 'log smart'
             title_str = r'$w = {v \over u}$'
-            if name_template[-1] =='c': NN = 16
         elif test_nr == 9:
-            w = lambda u,v: u+v*v
+            w = lambda u,v: 0.4*u + v
             scale_type = 'linear smart'
-            title_str = r'$w = u + v^2$'
+            title_str = r'$w = 0.4u + v$'
         elif test_nr == 10:
-            w = lambda u, v: u*u - v
+            w = lambda u, v: 0.4*u - v
             scale_type = 'linear smart'
-            title_str = r'$w = u^2-v$'
+            title_str = r'$w = 0.4u-v$'
         elif test_nr == 11:
             w = lambda u, v: -(u + v*v)
             scale_type = 'linear smart'
@@ -97,27 +88,22 @@ def do_test( name_template ):
             w = lambda u, v: v - u*u
             scale_type = 'linear smart'
             title_str = r'$w = v - u^2$'
-            if name_template[-1] =='c': NN = 4
         elif test_nr == 13:
             w = lambda u, v: u**1.5*v
             scale_type = 'log smart'
             title_str = r'$w = u^{1.5}v$'
-            if name_template[-1] =='c': NN = 16
         elif test_nr == 14:
             w = lambda u, v: u**1.5 / v
             scale_type = 'log smart'
             title_str = r'$w = {u^{1.5} \over v}$'
-            if name_template[-1] =='c': NN = 16
         elif test_nr == 15:
             w = lambda u, v: 1 / (u*u*v)
             scale_type = 'log smart'
             title_str = r'$w = {1 \over {u^2v}}$'
-            if name_template[-1] =='c': NN = 9
         elif test_nr == 16:
             w = lambda u, v: v / u / u
             scale_type = 'log smart'
             title_str = r'$w = {v \over {u^2}}$'
-            if name_template[-1] =='c': NN = 14
         else:
             return #sys.exit( 'there is no test number ({})'.format(test_nr) )
 
@@ -146,7 +132,15 @@ def do_test( name_template ):
             'tick_text_levels': 2,
         }
         if name_template[-1] == 'a':
-            left_axis['anamorphosis'] = {'func': lambda t: -t, 'inv': lambda t: -t}
+            if 'log' in scale_type:
+                left_axis['preScale'] = \
+                    {'func': lambda t: math.log(wmin*wmax/t),
+                     'inv': lambda t: wmin*wmax/math.exp(t)}
+            else:
+                left_axis['preScale'] = \
+                    {'func': lambda t: (umin+umax)-t, 'inv': lambda t: (umin+umax)-t}
+        elif 'preScale' in left_axis:
+            left_axis.pop( 'preScale' )
 
         right_axis = {
             'u_min': vmin,
@@ -157,20 +151,39 @@ def do_test( name_template ):
             'tick_text_levels': 2,
         }
         if name_template[-1] == 'b':
-            right_axis['anamorphosis'] = {'func': lambda t: -t/2, 'inv': lambda t: -2*t}
+            if 'log' in scale_type:
+                right_axis['preScale'] = \
+                    {'func': lambda t: math.log(wmin*wmax/t),
+                     'inv': lambda t: wmin*wmax/math.exp(t)}
+            else:
+                right_axis['preScale'] = \
+                    {'func': lambda t: (vmin+vmax-t),
+                     'inv': lambda t: (vmin+vmax)-t}
+        elif 'preScale' in right_axis:
+            right_axis.pop( 'preScale' )
 
         # automagically get the w scale range
         wtmp = [ w(umin, vmin), w(umax, vmin), w(umin, vmax), w(umax, vmax) ]
+        wmin = min(wtmp)
+        wmax = max(wtmp)
         middle_axis = {
-            'u_min': min(wtmp),
-            'u_max': max(wtmp),
+            'u_min': wmin,
+            'u_max': wmax,
             'title': r'$w$',
             'scale_type': scale_type,
             'tick_levels': 3,
             'tick_text_levels': 2,
         }
         if name_template[-1] == 'c':
-            middle_axis['anamorphosis'] = {'func': lambda t: -t, 'inv': lambda t: -t}
+            if 'log' in scale_type:
+                middle_axis['preScale'] = \
+                    {'func': lambda t: math.log(wmin*wmax/t),
+                     'inv': lambda t: wmin*wmax/math.exp(t)}
+            else:
+                middle_axis['preScale'] = {'func': lambda t: (wmin+wmax)-t,
+                                               'inv': lambda t: (wmin+wmax)-t}
+        elif 'preScale' in middle_axis:
+            middle_axis.pop( 'preScale' )
 
         # assemble the above 3 axes into a block
         block_params0 = {
@@ -197,13 +210,14 @@ def do_test( name_template ):
             'title_str': title_str,
             'block_params': [block_params0],
             'transformations': [('scale paper',)],
+            'isopleth_params': [{'color': 'Red'}],
             'npoints': NN,
 
             # text to appear at the foot of the nomogram
             # make this null string for nothing
             # a default string will appear if this is omitted
             'footer_string': tstr,
-            #'trace': 'trace_result'
+            'trace': 'trace_init'
         }
 
 
@@ -222,11 +236,10 @@ def do_test( name_template ):
     # end of do_test()
 
 
-do_test( 'axtest{}' )  # normal
-
-do_test( 'axtest{}a' )  # anamorphosis on left axis
-do_test( 'axtest{}b' )  # anamorphosis on right axis
-do_test( 'axtest{}c' )  # anamorphosis on middle axis
+do_test( 'axestest.{}' )  # normal
+do_test( 'axestest.{}a' )  # preScale on left axis
+do_test( 'axestest.{}b' )  # preScale on right axis
+do_test( 'axestest.{}c' )  # preScale on middle axis
 
 ################# end of axestest.py ###############
 

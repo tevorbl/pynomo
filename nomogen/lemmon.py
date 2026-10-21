@@ -164,6 +164,10 @@ main_params = {
          'width': 10,
          }],
     'block_params': [block_params0],
+
+    # set the colour of the ispleth/index line here
+    'isopleth_params': [ {'color': 'Red'}, ],
+
     'transformations': [('scale paper',)],
     'npoints': NN,
 
